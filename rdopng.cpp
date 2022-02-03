@@ -211,7 +211,7 @@ struct rdo_png_params
 			m_chan_weights_lab[0] = LW; // L
 			m_chan_weights_lab[1] = AW; // a
 			m_chan_weights_lab[2] = BW; // b
-			m_chan_weights_lab[3] = LW; // alpha
+			m_chan_weights_lab[3] = 1.0f; // alpha
 		}
 				
 		m_use_reject_thresholds = true;
@@ -714,15 +714,15 @@ static inline float compute_se(const color_rgba& a, const color_rgba& b, uint32_
 		b_d *= params.m_chan_weights_lab[2];
 						
 		dist = L_d + a_d + b_d;
+				
+		const float SCALE = 350000.0f;
+		dist *= SCALE;
 
 		if (num_comps == 4)
 		{
 			int da = (int)a[3] - (int)b[3];
 			dist += params.m_chan_weights_lab[3] * square((float)da);
 		}
-
-		const float SCALE = 350000.0f;
-		dist *= SCALE;
 	}
 	else if (params.m_use_chan_weights)
 	{
