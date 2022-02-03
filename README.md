@@ -9,6 +9,8 @@ You can download a pre-built Windows binary [here](https://github.com/richgel999
 
 ### Building
 
+You'll need [cmake](https://cmake.org/). There are no other dependencies.
+
 Linux (gcc/clang): 
 
 ```
