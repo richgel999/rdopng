@@ -314,11 +314,11 @@ static const rdo_png_level g_levels[30] =
 
 	// 6 pixels wide - greater compression
 	// 10-11
-	{ 1, 3, 3, false, 6, 16, false, NUM_MATCH_ORDER_6C, g_match_order6c, 0, nullptr },
-	{ 1, 3, 4, false, 6, 32, false, NUM_MATCH_ORDER_6C, g_match_order6c, 0, nullptr },
+	{ 1, 3, 3, false, 6, 16, false, NUM_MATCH_ORDER_6, g_match_order6, 0, nullptr },
+	{ 1, 3, 4, false, 6, 32, false, NUM_MATCH_ORDER_6, g_match_order6, 0, nullptr },
 
 	// 12-13
-	{ 2, 3, 4, false, 6, 32, false, NUM_MATCH_ORDER_6, g_match_order6, 0, nullptr },
+	{ 2, 3, 4, false, 6, 32, false, NUM_MATCH_ORDER_6C, g_match_order6c, 0, nullptr },
 	{ 4, 3, 4, false, 6, 64, false, NUM_MATCH_ORDER_6C, g_match_order6c, 0, nullptr },
 	
 	// 14-15	
