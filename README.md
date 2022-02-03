@@ -18,7 +18,6 @@ Windows (tested with Visual Studio 2022):
 cmake .
 rdopng.sln
 ```
-
 ### Instructions
 
 Encode a .PNG/.BMP/.TGA/.JPG file like this:
