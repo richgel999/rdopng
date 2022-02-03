@@ -21,36 +21,38 @@ rdopng.sln
 
 ### Instructions
 
-Encode a .PNG/.BMP/.TGA/.JPG file like this:
+Encodes a .PNG/.BMP/.TGA/.JPG file to "./file_rdo.png":
 
 ```
 rdopng file.png
 ```
 
-Smaller files but 2x slower:
+Encodes smaller files but will be 2x slower:
 
 ```
 rdopng -two_pass file.png
 ```
 
-Lower than default quality (which is 300), but smaller files:
+Encodes at lower than default quality (which is 300), but writes smaller files:
 
 ```
 rdopng -lambda 500 file.png
 ```
 
-Significantly lower quality, using a higher parsing level to compensate for artifacts:
+Significantly lower quality (which increases artifacts), using a higher than default parsing level (which is 0) to compensate for artifacts:
 
 ```
 rdopng -level 3 -lambda 1000 file.png
 ```
 
-Enable debug output and write output to Z.png:
+Enable debug output and write output to z.png:
 
 ```
-rdopmng -debug file.png -output z.png
+rdopng -debug file.png -output z.png
 ```
 
-Level ranges from 0-29. Levels 0-9 use up to 4 pixel long matches, levels 10-17 use up to 6 pixel long matches, and 18-23 use up to 6 or 12 pixel long matches. Levels 24-29 are impractical (too slow). The higher the level within a match length category, the slower the parsing. The higher match length categories are needed for the higher lambdas/lower bitrates. At near-lossless settings (lower than approximately lambda 300), the smaller/less aggressive parsing levels are usually fine. At higher lambdas/lower bitrates the higher levels are needed to avoid artifacts.
+Level ranges from 0-29. Levels 0-9 use up to 4 pixel long matches, levels 10-17 use up to 6 pixel long matches, and 18-23 use up to 6 or 12 pixel long matches. Levels 24-29 use exhaustive matching and are beyond impractical except on tiny images. 
 
--lambda is the quality slider. Useful lambda values are 10-20000, but values beyond 2000 will require fiddling with the level to compensate for artifacts. Higher levels are extremely slow because the current tool is single threaded.
+The higher the level within a match length category, the slower the encoder. Higher match length categories are needed for the higher lambdas/lower bitrates. At near-lossless settings (lower than approximately lambda 300), the smaller/less aggressive parsing levels are usually fine. At higher lambdas/lower bitrates the higher levels are needed to avoid artifacts. To get below roughly 3-4bpp you'll need to use high lambdas, two pass mode, and very slow parsing levels.
+
+-lambda is the quality slider. Useful lambda values are 10-20000, but values beyond approximately 500-1000 (depending on the image) will require fiddling with the level to compensate for artifacts. Higher levels are extremely slow because the current tool is single threaded.
