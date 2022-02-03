@@ -1,7 +1,7 @@
 # rdopng
 Rate-Distortion Optimized Lossy PNG Encoding Tool
 
-rdopng is a command line tool which uses LZ match optimization, a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode 24/32bpp PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonably fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
+rdopng is a command line tool which uses LZ match optimization, Lagrangian multiplier [rate distortion optimization (RDO)](https://en.wikipedia.org/wiki/Rate%E2%80%93distortion_optimization), a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode 24/32bpp PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonably fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
 
 ### Building
 
@@ -53,3 +53,4 @@ rdopmng -debug file.png -output z.png
 
 Level ranges from 0-29. Levels 0-9 use up to 4 pixel long matches, levels 10-17 use up to 6 pixel long matches, and 18-23 use up to 6 or 12 pixel long matches. Levels 24-29 are impractical (too slow). The higher the level within a match length category, the slower the parsing. The higher match length categories are needed for the higher lambdas/lower bitrates. At near-lossless settings (lower than approximately lambda 300), the smaller/less aggressive parsing levels are usually fine. At higher lambdas/lower bitrates the higher levels are needed to avoid artifacts.
 
+-lambda is the quality slider. Useful lambda values are 10-20000, but values beyond 2000 will require fiddling with the level to compensate for artifacts. Higher levels are extremely slow because the current tool is single threaded.
