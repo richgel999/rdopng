@@ -45,7 +45,7 @@ Encodes at lower than default quality (which is 300), but writes smaller files:
 rdopng -lambda 500 file.png
 ```
 
-Significantly lower quality (which increases artifacts), using a higher than default parsing level (which is 0) to compensate for artifacts:
+Significantly lower quality (which increases artifacts), using a higher than default parsing level to compensate for artifacts:
 
 ```
 rdopng -level 3 -lambda 1000 file.png
