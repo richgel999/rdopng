@@ -1,7 +1,7 @@
 # rdopng
 Rate-Distortion Optimized Lossy PNG Encoding Tool
 
-rdopng is a command line tool which uses LZ match optimization, a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonable fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
+rdopng is a command line tool which uses LZ match optimization, a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode 24/32bpp PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonable fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
 
 ### Building
 
