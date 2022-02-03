@@ -5,6 +5,8 @@ rdopng is a command line tool which uses LZ match optimization, Lagrangian multi
 
 Unlike [pngquant](https://pngquant.org/), rdopng does not use 256-color palettes or dithering. PNG files encoded by rdopng typically range between roughly 2.5-7bpp, depending on the options used (and how much time and patience you have).
 
+Some example encodes and command lines are [here](https://github.com/richgel999/rdopng/wiki/Examples).
+
 You can download a pre-built Windows binary [here](https://github.com/richgel999/rdopng/releases/tag/1.0.7). You may need to install the [VS 2022 runtime redistributable from Microsoft](https://docs.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
 
 ### Building
