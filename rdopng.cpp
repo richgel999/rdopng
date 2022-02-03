@@ -30,7 +30,7 @@
 	#define BASISU_CATCH_EXCEPTIONS 1
 #endif
 
-#define RDO_PNG_VERSION "v1.07"
+#define RDO_PNG_VERSION "v1.08"
 
 using namespace basisu;
 using namespace buminiz;
