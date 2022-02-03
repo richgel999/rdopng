@@ -3,6 +3,8 @@ Rate-Distortion Optimized Lossy PNG Encoding Tool
 
 rdopng is a command line tool which uses LZ match optimization, Lagrangian multiplier [rate distortion optimization (RDO)](https://en.wikipedia.org/wiki/Rate%E2%80%93distortion_optimization), a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode 24/32bpp PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonably fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
 
+You can download a pre-built Windows binary [here](https://github.com/richgel999/rdopng/releases/tag/1.0.7). You may need to install the [VS 2022 redistributable from Microsoft](https://docs.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
+
 ### Building
 
 Linux (gcc/clang): 
