@@ -64,3 +64,6 @@ Level ranges from 0-29. Levels 0-9 use up to 4 pixel long matches, levels 10-17 
 The higher the level within a match length category, the slower the encoder. Higher match length categories are needed for the higher lambdas/lower bitrates. At near-lossless settings (lower than approximately lambda 300), the smaller/less aggressive parsing levels are usually fine. At higher lambdas/lower bitrates the higher levels are needed to avoid artifacts. To get below roughly 3-4bpp you'll need to use high lambdas, two pass mode, and very slow parsing levels.
 
 -lambda is the quality slider. Useful lambda values are roughly 1-20000, but values beyond approximately 500-1000 (depending on the image) will require fiddling with the level to compensate for artifacts. Higher levels are extremely slow because the current tool is single threaded.
+
+### Special Thanks
+Thanks to [Paul Hughes](https://twitter.com/PaulieHughes) for encouraging me to continue working on this on Twitter. Also, thanks to [Jyrki Alakuijala](https://twitter.com/jyzg) for suggesting to drop YCbCr for an alternative such as Oklab.
