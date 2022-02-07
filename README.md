@@ -47,7 +47,7 @@ Encodes a file to "./file_rdo.qoi" at higher quality per bit, but much slower (a
 rdopng -qoi -uber -unpack_qoi_to_png file.png 
 ```
 
-Encodes smaller files but will be 2x slower:
+Encodes smaller PNG files but will be 2x slower:
 
 ```
 rdopng -two_pass file.png
@@ -59,7 +59,7 @@ Encodes at lower than default quality (which is 300), but writes smaller files:
 rdopng -lambda 500 file.png
 ```
 
-Significantly lower quality (which increases artifacts), using a higher than default parsing level to compensate for artifacts:
+Significantly lower PNG quality (which increases artifacts), using a higher than default parsing level to compensate for artifacts:
 
 ```
 rdopng -level 3 -lambda 1000 file.png
@@ -82,6 +82,8 @@ Level ranges from 0-29. Levels 0-9 use up to 4 pixel long matches, levels 10-17 
 The higher the level within a match length category, the slower the encoder. Higher match length categories are needed for the higher lambdas/lower bitrates. At near-lossless settings (lower than approximately lambda 300), the smaller/less aggressive parsing levels are usually fine. At higher lambdas/lower bitrates the higher levels are needed to avoid artifacts. To get below roughly 3-4bpp you'll need to use high lambdas, two pass mode, and very slow parsing levels.
 
 -lambda is the quality slider. Useful lambda values are roughly 1-20000, but values beyond approximately 500-1000 (depending on the image) will require fiddling with the level to compensate for artifacts. Higher levels are extremely slow because the current tool is single threaded.
+
+Most options work with both QOI and PNG. The -level option is only for PNG, and the -uber/-better options are only for QOI.
 
 ### Special Thanks
 Thanks to [Paul Hughes](https://twitter.com/PaulieHughes) for encouraging me to continue working on this on Twitter. Also, thanks to [Jyrki Alakuijala](https://twitter.com/jyzg) for suggesting to drop YCbCr for an alternative such as Oklab.
