@@ -41,6 +41,12 @@ Encodes a .PNG/.BMP/.TGA/.JPG file to "./file_rdo.qoi" (and also unpacks the cod
 rdopng -qoi -unpack_qoi_to_png file.png 
 ```
 
+Encodes a file to "./file_rdo.qoi" at higher quality per bit, but much slower (also try -better which is in between the default/uber settings):
+
+```
+rdopng -qoi -uber -unpack_qoi_to_png file.png 
+```
+
 Encodes smaller files but will be 2x slower:
 
 ```
