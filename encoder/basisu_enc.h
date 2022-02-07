@@ -2780,6 +2780,9 @@ namespace basisu
 		inline const color_rgba &operator() (uint32_t x, uint32_t y) const { assert(x < m_width && y < m_height); return m_pixels[x + y * m_pitch]; }
 		inline color_rgba &operator() (uint32_t x, uint32_t y) { assert(x < m_width && y < m_height); return m_pixels[x + y * m_pitch]; }
 
+		inline const color_rgba& get_pixel(uint32_t c) const { return (*this)(c % m_width, c / m_width); }
+		inline color_rgba& get_pixel(uint32_t c) { return (*this)(c % m_width, c / m_width); }
+		
 		inline const color_rgba &get_clamped(int x, int y) const { return (*this)(clamp<int>(x, 0, m_width - 1), clamp<int>(y, 0, m_height - 1)); }
 		inline color_rgba &get_clamped(int x, int y) { return (*this)(clamp<int>(x, 0, m_width - 1), clamp<int>(y, 0, m_height - 1)); }
 
@@ -2950,6 +2953,24 @@ namespace basisu
 				}
 			}
 			return *this;
+		}
+
+		bool operator== (const image& img) const
+		{
+			if ((m_width != img.get_width()) || (m_height != img.get_height()))
+				return false;
+
+			for (uint32_t y = 0; y < m_height; y++)
+				for (uint32_t x = 0; x < m_width; x++)
+					if ((*this)(x, y) != img(x, y))
+						return false;
+
+			return true;
+		}
+
+		bool operator!= (const image& img) const
+		{
+			return !(*this == img);
 		}
 
 		void debug_text(uint32_t x_ofs, uint32_t y_ofs, uint32_t x_scale, uint32_t y_scale, const color_rgba &fg, const color_rgba *pBG, bool alpha_only, const char* p, ...);

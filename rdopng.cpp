@@ -11,6 +11,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Normal map specific references:
+// "Survey of Efficient Representations for Independent Unit Vectors" by Cigolle, Donow, et al
+// https://jcgt.org/published/0003/02/01/
+// "Objective Image Quality Assessment of Texture Compression" by Griffin, Olano
+// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=914900
+
 #if _MSC_VER
 // For sprintf(), strcpy() 
 #define _CRT_SECURE_NO_WARNINGS (1)
@@ -30,7 +37,17 @@
 	#define BASISU_CATCH_EXCEPTIONS 1
 #endif
 
-#define RDO_PNG_VERSION "v1.08"
+#define RDO_PNG_VERSION "v1.09"
+
+#define RDO_PNG_USE_APPROX_ACOS (1)
+
+const float DEF_MAX_SMOOTH_STD_DEV = 35.0f;
+const float DEF_SMOOTH_MAX_MSE_SCALE = 250.0f;
+const float DEF_MAX_ULTRA_SMOOTH_STD_DEV = 5.0F;
+const float DEF_ULTRA_SMOOTH_MAX_MSE_SCALE = 1500.0F;
+
+const float QOI_DEF_SMOOTH_MAX_MSE_SCALE = 2500.0f;
+const float QOI_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE = 5000.0f;
 
 using namespace basisu;
 using namespace buminiz;
@@ -41,6 +58,8 @@ namespace buminiz
 {
 	extern uint64_t g_defl_freq[2][TDEFL_MAX_HUFF_SYMBOLS];
 }
+
+const float RAD_TO_DEG = 57.29577951f;
 
 //const int SEARCH_DIST = 32;
 //const bool exhaustive_search = false;
@@ -173,6 +192,13 @@ static const match_order g_match_order6c[] =
 };
 const uint32_t NUM_MATCH_ORDER_6C = sizeof(g_match_order6c) / sizeof(g_match_order6c[0]);
 
+enum speed_mode
+{
+	cNormalSpeed,
+	cFasterSpeed,
+	cFastestSpeed
+};
+
 struct rdo_png_params
 {
 	rdo_png_params()
@@ -183,10 +209,11 @@ struct rdo_png_params
 	void clear()
 	{
 		m_orig_img.clear();
-		m_output_png_file.clear();
+		m_output_file_data.clear();
 		m_lambda = 300.0f;
 		m_level = 0;
 		m_psnr = 0;
+		m_angular_rms_error = 0;
 		m_y_psnr = 0;
 		m_bpp = 0;
 		m_print_debug_output = false;
@@ -211,7 +238,7 @@ struct rdo_png_params
 			m_chan_weights_lab[0] = LW; // L
 			m_chan_weights_lab[1] = AW; // a
 			m_chan_weights_lab[2] = BW; // b
-			m_chan_weights_lab[3] = 1.0f; // alpha
+			m_chan_weights_lab[3] = 1.5f; // alpha
 		}
 				
 		m_use_reject_thresholds = true;
@@ -233,20 +260,70 @@ struct rdo_png_params
 		m_two_pass = false;
 		
 		m_alpha_is_opacity = true;
+
+		m_speed_mode = cFastestSpeed;
+		
+		m_normal_map = false;
+		m_snorm8 = false;
+		
+		m_print_normal_map_metrics = false;
+				
+		m_max_smooth_std_dev = DEF_MAX_SMOOTH_STD_DEV;
+		m_smooth_max_mse_scale = DEF_SMOOTH_MAX_MSE_SCALE;
+		m_max_ultra_smooth_std_dev = DEF_MAX_ULTRA_SMOOTH_STD_DEV;
+		m_ultra_smooth_max_mse_scale = DEF_ULTRA_SMOOTH_MAX_MSE_SCALE;
+
+		m_no_mse_scaling = false;
 	}
+
+	void print()
+	{
+		printf("orig image: %ux%u has alpha: %u\n", m_orig_img.get_width(), m_orig_img.get_height(), m_orig_img.has_alpha());
+		printf("lambda: %f\n", m_lambda);
+		printf("level: %u\n", m_level);
+		printf("chan weights: %u %u %u %u\n", m_chan_weights[0], m_chan_weights[1], m_chan_weights[2], m_chan_weights[3]);
+		printf("use chan weights: %u\n", m_use_chan_weights);
+		printf("chan weights lab: %f %f %f %f\n", m_chan_weights_lab[0], m_chan_weights_lab[1], m_chan_weights_lab[2], m_chan_weights_lab[3]);
+		printf("reject thresholds: %u %u %u %u\n", m_reject_thresholds[0], m_reject_thresholds[1], m_reject_thresholds[2], m_reject_thresholds[3]);
+		printf("reject thresholds lab: %f %f\n", m_reject_thresholds_lab[0], m_reject_thresholds_lab[1]);
+		printf("use reject thresholds: %u\n", m_use_reject_thresholds);
+		printf("transparent reject test: %u\n", m_transparent_reject_test);
+		printf("print debug output: %u\n", m_print_debug_output);
+		printf("debug images: %u\n", m_debug_images);
+		printf("print progress: %u\n", m_print_progress);
+		printf("print stats: %u\n", m_print_stats);
+		printf("perceptual error: %u\n", m_perceptual_error);
+		printf("match only: %u\n", m_match_only);
+		printf("two pass: %u\n", m_two_pass);
+		printf("alpha is opacity: %u\n", m_alpha_is_opacity);
+		printf("speed mode: %u\n", (uint32_t)m_speed_mode);
+		printf("normal map: %u\n", m_normal_map);
+		printf("snorm8: %u\n", m_snorm8);
+		printf("print normal map metrics: %u\n", m_print_normal_map_metrics);
+		printf("max smooth std dev: %f\n", m_max_smooth_std_dev);
+		printf("smooth max mse scale: %f\n", m_smooth_max_mse_scale);
+		printf("max ultra smooth std dev: %f\n", m_max_ultra_smooth_std_dev);
+		printf("ultra smooth max mse scale: %f\n", m_ultra_smooth_max_mse_scale);
+		printf("no MSE scaling: %u\n", m_no_mse_scaling);
+	}
+
+	// TODO: results - move
+	float m_psnr;
+	float m_angular_rms_error;
+	float m_y_psnr;
+	float m_bpp;
+	
+	// This is the output image data, but note for PNG you can't save it at the right size without the scanline predictor values.
+	image m_output_image;
 
 	image m_orig_img;
 
-	uint8_vec m_output_png_file;
-
+	uint8_vec m_output_file_data;
+		
 	float m_lambda;
 
 	uint32_t m_level;
-
-	float m_psnr;
-	float m_y_psnr;
-	float m_bpp;
-		
+				
 	uint32_t m_chan_weights[4];
 	float m_chan_weights_lab[4];
 	bool m_use_chan_weights;
@@ -268,6 +345,19 @@ struct rdo_png_params
 	bool m_two_pass;
 
 	bool m_alpha_is_opacity;
+
+	speed_mode m_speed_mode;
+
+	bool m_normal_map;
+	bool m_snorm8;
+	bool m_print_normal_map_metrics;
+
+	float m_max_smooth_std_dev;
+	float m_smooth_max_mse_scale;
+	float m_max_ultra_smooth_std_dev;
+	float m_ultra_smooth_max_mse_scale;
+	
+	bool m_no_mse_scaling;
 };
 
 struct rdo_png_level
@@ -414,6 +504,110 @@ static const uint8_t g_tdefl_large_dist_extra[128] =
 static inline float square(float f)
 {
 	return f * f;
+}
+
+class tracked_stat
+{
+public:
+	tracked_stat() { clear(); }
+
+	inline void clear() { m_num = 0; m_total = 0; m_total2 = 0; }
+
+	inline void update(uint32_t val) { m_num++; m_total += val; m_total2 += val * val; }
+
+	inline tracked_stat& operator += (uint32_t val) { update(val); return *this; }
+
+	inline uint32_t get_number_of_values() { return m_num; }
+	inline uint64_t get_total() const { return m_total; }
+	inline uint64_t get_total2() const { return m_total2; }
+
+	inline float get_average() const { return m_num ? (float)m_total / m_num : 0.0f; };
+	inline float get_std_dev() const { return m_num ? sqrtf((float)(m_num * m_total2 - m_total * m_total)) / m_num : 0.0f; }
+	inline float get_variance() const { float s = get_std_dev(); return s * s; }
+
+private:
+	uint32_t m_num;
+	uint64_t m_total;
+	uint64_t m_total2;
+};
+
+static inline vec3F decode_normal(const color_rgba& c, const rdo_png_params& params)
+{
+	if (params.m_snorm8)
+	{
+		// snomr8 - supported by GPU's. Zero can be represented exactly, two values for -1.
+		return vec3F(
+			clamp((float)(c.r - 128) * (1.0f / 127.0f), -1.0f, 1.0f),
+			clamp((float)(c.g - 128) * (1.0f / 127.0f), -1.0f, 1.0f),
+			clamp((float)(c.b - 128) * (1.0f / 127.0f), -1.0f, 1.0f));
+	}
+	else
+	{
+		// unorm8 - zero cannot be represented exactly
+		return vec3F((c.r * (1.0f / 255.0f)) * 2.0f - 1.0f, (c.g * (1.0f / 255.0f)) * 2.0f - 1.0f, (c.b * (1.0f / 255.0f)) * 2.0f - 1.0f);
+	}
+}
+
+static inline color_rgba encode_normal(const vec3F& v, int alpha, const rdo_png_params& params)
+{
+	color_rgba result;
+
+	if (params.m_snorm8)
+	{
+		result.set((int)std::round(v[0] * 127.0f) + 128, (int)std::round(v[1] * 127.0f) + 128, (int)std::round(v[2] * 127.0f) + 128, alpha);
+	}
+	else
+	{
+		result.set(
+			(int)std::round(((v[0] * .5f) + .5f) * 255.0f),
+			(int)std::round(((v[1] * .5f) + .5f) * 255.0f),
+			(int)std::round(((v[2] * .5f) + .5f) * 255.0f),
+			alpha);
+	}
+
+	return result;
+}
+
+static color_rgba encode_normal_exhaustive(const vec3F& v, int alpha, const rdo_png_params& params)
+{
+	color_rgba result;
+
+	float best_dot = -1e+9f;
+	color_rgba best_color(0);
+	for (uint32_t i = 0; i < 8; i++)
+	{
+		if (params.m_snorm8)
+		{
+			result.set(
+				(int)((i & 1) ? floorf : ceilf)(v[0] * 127.0f) + 128,
+				(int)((i & 2) ? floorf : ceilf)(v[1] * 127.0f) + 128,
+				(int)((i & 4) ? floorf : ceilf)(v[2] * 127.0f) + 128, alpha);
+		}
+		else
+		{
+			result.set(
+				(int)((i & 1) ? floorf : ceilf)(((v[0] * .5f) + .5f) * 255.0f),
+				(int)((i & 2) ? floorf : ceilf)(((v[1] * .5f) + .5f) * 255.0f),
+				(int)((i & 4) ? floorf : ceilf)(((v[2] * .5f) + .5f) * 255.0f), alpha);
+
+			color_rgba result2(
+				(int)((i & 1) ? floorf : ceilf)(((v[0] * .5f) + .5f) * 255.0f),
+				(int)((i & 2) ? floorf : ceilf)(((v[1] * .5f) + .5f) * 255.0f),
+				(int)((i & 4) ? floorf : ceilf)(((v[2] * .5f) + .5f) * 255.0f), alpha);
+		}
+
+		vec3F decoded_v(decode_normal(result, params));
+		decoded_v.normalize_in_place();
+
+		float dot = decoded_v.dot(v);
+		if (dot > best_dot)
+		{
+			best_dot = dot;
+			best_color = result;
+		}
+	}
+
+	return best_color;
 }
 
 static inline uint32_t compute_match_cost(uint32_t dist, uint32_t match_len_in_bytes, const huffman_encoding_table& lit_tab, const huffman_encoding_table& dist_tab)
@@ -692,14 +886,104 @@ static void init_oklab_table(const char *pExec, bool quiet, bool caching_enabled
 	}
 }
 
-static inline float compute_se(const color_rgba& a, const color_rgba& b, uint32_t num_comps, const rdo_png_params &params)
+const uint32_t ACOS_LOOKUP_SIZE = 1024;
+float g_acos_lookup[ACOS_LOOKUP_SIZE + 1];
+const float ACOS_LOW_ANGLE_THRESHOLD = .95f;
+
+static inline float approx_acos(float f)
+{
+	const bool is_neg = f < 0.0f;
+	f = clamp(fabs(f), 0.0f, 1.0f);
+		
+	float r;
+	// Use Taylor at low angles, otherwise table+bilinear.
+	if (f >= ACOS_LOW_ANGLE_THRESHOLD)
+	{
+		r = sqrtf(2.0f * (1.0f - f)) * RAD_TO_DEG;
+	}
+	else
+	{
+		float fract = f - floor(f);
+		int index = (int)(f * (ACOS_LOOKUP_SIZE - 1));
+		assert(index < ACOS_LOOKUP_SIZE);
+		r = g_acos_lookup[index] * (1.0f - fract) + g_acos_lookup[index + 1] * fract;
+	}
+
+	return is_neg ? (180.0f - r) : r;
+}
+
+static void init_acos_lookup()
+{
+	for (uint32_t i = 0; i < ACOS_LOOKUP_SIZE; i++)
+		g_acos_lookup[i] = acos((float)i / (float)(ACOS_LOOKUP_SIZE - 1)) * RAD_TO_DEG;
+
+	g_acos_lookup[ACOS_LOOKUP_SIZE] = g_acos_lookup[ACOS_LOOKUP_SIZE - 1];
+
+#if 0
+	double tot_err = 0;
+	const uint32_t N = 32768;
+	double max_err = 0;
+	for (uint32_t i = 0; i < N; i++)
+	{
+		float f = ((float)i / (float)(N - 1)) * 2.0f - 1.0f;
+		float err = approx_acos(f) - acos(f) * RAD_TO_DEG;
+		printf("%f %f %f %f\n", f, approx_acos(f), acos(f) * RAD_TO_DEG, err);
+		tot_err += fabs(err);
+		max_err = maximum<double>(max_err, fabs(err));
+	}
+	printf("Total err: %f, avg: %f, max: %f\n", tot_err, tot_err / N, max_err);
+	exit(0);
+#endif
+}
+
+static inline float compute_se(const color_rgba& a, const color_rgba& orig, uint32_t num_comps, const rdo_png_params &params)
 {
 	float dist;
+			
+	if (params.m_normal_map)
+	{
+		vec3F caf(decode_normal(a, params));
+		vec3F cbf(decode_normal(orig, params));
 
-	if (params.m_perceptual_error)
+		float len_a = caf.length();
+		if (len_a != 0)
+			caf /= len_a;
+
+		float len_b = cbf.length();
+		if (len_b != 0)
+			cbf /= len_b;
+
+		float dot = caf.dot(cbf);
+		
+#if RDO_PNG_USE_APPROX_ACOS
+		float ang_err = approx_acos(dot);
+#else
+		float ang_err = acosf(clamp<float>(dot, -1.0f, 1.0f)) * RAD_TO_DEG;
+#endif
+								
+		float len_err = fabsf(len_a - 1.0f);
+		// If the length is close enough to 1.0 then don't incentivize the encoder to reduce it.
+		const float LEN_ERR_THRESH = .1f;
+		if (len_err < LEN_ERR_THRESH)
+			len_err = 0.0f;
+		else
+			len_err -= LEN_ERR_THRESH;
+		len_err *= 255.0f;
+
+		const float ANG_ERR_SCALE = 4.0f; // normalization factor, so lambda is roughly comparable to -linear
+		const float LEN_ERR_SCALE = .1f; // prevent the encoder from over-optimizing for length=1.0
+		dist = square(ang_err) * ANG_ERR_SCALE + square(len_err) * LEN_ERR_SCALE;
+
+		if (num_comps == 4)
+		{
+			int da = (int)a[3] - (int)orig[3];
+			dist += (float)params.m_chan_weights[3] * square((float)da);
+		}
+	}
+	else if (params.m_perceptual_error)
 	{
 		Lab la = srgb_to_oklab_norm(a);
-		Lab lb = srgb_to_oklab_norm(b);
+		Lab lb = srgb_to_oklab_norm(orig);
 
 		la.L -= lb.L;
 		la.a -= lb.a;
@@ -714,26 +998,27 @@ static inline float compute_se(const color_rgba& a, const color_rgba& b, uint32_
 		b_d *= params.m_chan_weights_lab[2];
 						
 		dist = L_d + a_d + b_d;
-				
-		const float SCALE = 350000.0f;
-		dist *= SCALE;
+	
+		// TODO: Scales the error to bring it into a range where lambda will be roughly comparable to plain MSE.
+		const float NORM_ERROR_SCALE = 350000.0f;
+		dist *= NORM_ERROR_SCALE;
 
 		if (num_comps == 4)
 		{
-			int da = (int)a[3] - (int)b[3];
+			int da = (int)a[3] - (int)orig[3];
 			dist += params.m_chan_weights_lab[3] * square((float)da);
 		}
 	}
 	else if (params.m_use_chan_weights)
 	{
-		int dr = (int)a[0] - (int)b[0];
-		int dg = (int)a[1] - (int)b[1];
-		int db = (int)a[2] - (int)b[2];
+		int dr = (int)a[0] - (int)orig[0];
+		int dg = (int)a[1] - (int)orig[1];
+		int db = (int)a[2] - (int)orig[2];
 
 		uint32_t idist = (uint32_t)(params.m_chan_weights[0] * (uint32_t)(dr * dr) + params.m_chan_weights[1] * (uint32_t)(dg * dg) + params.m_chan_weights[2] * (uint32_t)(db * db));
 		if (num_comps == 4)
 		{
-			int da = (int)a[3] - (int)b[3];
+			int da = (int)a[3] - (int)orig[3];
 			idist += params.m_chan_weights[3] * (uint32_t)(da * da);
 		}
 
@@ -741,14 +1026,14 @@ static inline float compute_se(const color_rgba& a, const color_rgba& b, uint32_
 	}
 	else
 	{
-		int dr = (int)a[0] - (int)b[0];
-		int dg = (int)a[1] - (int)b[1];
-		int db = (int)a[2] - (int)b[2];
+		int dr = (int)a[0] - (int)orig[0];
+		int dg = (int)a[1] - (int)orig[1];
+		int db = (int)a[2] - (int)orig[2];
 
 		uint32_t idist = (uint32_t)(dr * dr + dg * dg + db * db);
 		if (num_comps == 4)
 		{
-			int da = (int)a[3] - (int)b[3];
+			int da = (int)a[3] - (int)orig[3];
 			idist += da * da;
 		}
 
@@ -817,31 +1102,6 @@ static inline bool should_reject(const color_rgba& trial_color, const color_rgba
 
 	return false;
 }
-
-class tracked_stat
-{
-public:
-	tracked_stat() { clear(); }
-
-	inline void clear() { m_num = 0; m_total = 0; m_total2 = 0; }
-
-	inline void update(uint32_t val) { m_num++; m_total += val; m_total2 += val * val; }
-
-	inline tracked_stat& operator += (uint32_t val) { update(val); return *this; }
-
-	inline uint32_t get_number_of_values() { return m_num; }
-	inline uint64_t get_total() const { return m_total; }
-	inline uint64_t get_total2() const { return m_total2; }
-
-	inline float get_average() const { return m_num ? (float)m_total / m_num : 0.0f; };
-	inline float get_std_dev() const { return m_num ? sqrtf((float)(m_num * m_total2 - m_total * m_total)) / m_num : 0.0f; }
-	inline float get_variance() const { float s = get_std_dev(); return s * s; }
-
-private:
-	uint32_t m_num;
-	uint64_t m_total;
-	uint64_t m_total2;
-};
 
 static inline int compute_png_match_dist(int xa, int ya, int xb, int yb, int width, int height, int num_comps)
 {
@@ -1103,7 +1363,7 @@ static void find_optimal_n(
 	} // yd
 }
 
-static float print_image_metrics(const image& a, const image& b, uint32_t num_comps, float& y_psnr, bool print)
+static float compute_image_metrics(const image& a, const image& b, uint32_t num_comps, float& y_psnr, bool print)
 {
 	image_metrics im;
 	im.calc(a, b, 0, 3);
@@ -1149,6 +1409,83 @@ static float print_image_metrics(const image& a, const image& b, uint32_t num_co
 		printf("\n");
 		
 	return psnr;
+}
+
+static float compute_normal_map_image_metrics(const image& enc_img, const image& orig_img, bool print_flag, const rdo_png_params& params)
+{
+	float max_err = -1e+9f, min_err = 1e+9f;
+
+	double total_err = 0.0f, total_err2 = 0.0f;
+	running_stat len_a_stats, len_b_stats;
+
+	uint32_t total_invalid_a = 0, total_invalid_b = 0;
+
+	const float INVALID_LEN_THRESHOLD = .4f;
+
+	for (uint32_t y = 0; y < orig_img.get_height(); y++)
+	{
+		for (uint32_t x = 0; x < orig_img.get_width(); x++)
+		{
+			const color_rgba& ca = enc_img(x, y);
+			const color_rgba& cb = orig_img(x, y);
+						
+			vec3F caf(decode_normal(ca, params));
+			vec3F cbf(decode_normal(cb, params));
+			
+			float len_a = caf.length();
+			len_a_stats.push(len_a);
+			
+			if (len_a < INVALID_LEN_THRESHOLD)
+				total_invalid_a++;
+			if (len_a > (1.0f + INVALID_LEN_THRESHOLD))
+				total_invalid_a++;
+
+			if (len_a != 0)
+				caf /= len_a;
+
+			float len_b = cbf.length();
+			len_b_stats.push(len_b);
+
+			if (len_b < INVALID_LEN_THRESHOLD)
+				total_invalid_b++;
+
+			if (len_b != 0)
+				cbf /= len_b;
+
+			float dot = clamp<float>(caf.dot(cbf), -1.0f, 1.0f);
+			
+			float err_degrees = acosf(dot) * RAD_TO_DEG;
+
+			max_err = maximum(max_err, err_degrees);
+			min_err = minimum(min_err, err_degrees);
+			total_err += err_degrees;
+			total_err2 += err_degrees * err_degrees;
+		} // x
+	} // y
+
+	const double total_pixels = (double)orig_img.get_total_pixels();
+
+	if (print_flag)
+	{
+		printf("Total apparently invalid (len < %3.3f or >%3.3f): Encoded: %u Original: %u\n", INVALID_LEN_THRESHOLD, INVALID_LEN_THRESHOLD + 1.0f, total_invalid_a, total_invalid_b);
+		printf("Length statistics: Encoded: Avg %3.3f Std Dev %3.3f, Original: Avg %3.3f Std Dev: %3.3f\n",
+			len_a_stats.get_mean(), len_a_stats.get_std_dev(),
+			len_b_stats.get_mean(), len_b_stats.get_std_dev());
+
+		printf("Angular error:\n");
+		printf("Minimum: %3.3f degrees\nMaximum: %3.3f degrees\n", min_err, max_err);
+		printf("Average: %3.3f degrees\n", total_err / total_pixels);
+		printf("Std Dev: %3.3f degrees\n", sqrt(total_pixels * total_err2 - total_err * total_err) / total_pixels);
+	}
+
+	const double rms_error = sqrt(total_err2 / total_pixels);
+	
+	if (print_flag)
+	{
+		printf("RMS:     %3.3f degrees\n\n", rms_error);
+	}
+
+	return (float)rms_error;
 }
 
 struct find_optimal_hash_key
@@ -1368,6 +1705,124 @@ static void eval_matches(int m,
 	assert(best_t != 1e+9f);
 }
 
+static void create_smooth_maps(
+	vector2D<float> &smooth_block_mse_scales,
+	const image& orig_img,
+	rdo_png_params &params)
+{
+	const uint32_t width = orig_img.get_width();
+	const uint32_t height = orig_img.get_height();
+	const uint32_t total_pixels = orig_img.get_total_pixels();
+	const bool has_alpha = orig_img.has_alpha();
+	const uint32_t num_comps = has_alpha ? 4 : 3;
+
+	if (params.m_no_mse_scaling)
+	{
+		smooth_block_mse_scales.set_all(1.0f);
+		return;
+	}
+
+	image smooth_vis(width, height);
+	image alpha_edge_vis(width, height);
+	image ultra_smooth_vis(width, height);
+
+	for (uint32_t y = 0; y < height; y++)
+	{
+		for (uint32_t x = 0; x < width; x++)
+		{
+			float alpha_edge_yl = 0.0f;
+			if ((num_comps == 4) && (params.m_alpha_is_opacity))
+			{
+				tracked_stat alpha_comp_stats;
+				for (int yd = -3; yd <= 3; yd++)
+				{
+					for (int xd = -3; xd <= 3; xd++)
+					{
+						const color_rgba& p = orig_img.get_clamped((int)x + xd, (int)y + yd);
+						alpha_comp_stats.update(p[3]);
+					}
+				}
+
+				float max_std_dev = alpha_comp_stats.get_std_dev();
+
+				float yl = clampf(max_std_dev / params.m_max_smooth_std_dev, 0.0f, 1.0f);
+				alpha_edge_yl = yl * yl;
+			}
+
+			{
+				tracked_stat comp_stats[4];
+				for (int yd = -1; yd <= 1; yd++)
+				{
+					for (int xd = -1; xd <= 1; xd++)
+					{
+						const color_rgba& p = orig_img.get_clamped((int)x + xd, (int)y + yd);
+						comp_stats[0].update(p[0]);
+						comp_stats[1].update(p[1]);
+						comp_stats[2].update(p[2]);
+						if (num_comps == 4)
+							comp_stats[3].update(p[3]);
+					}
+				}
+
+				float max_std_dev = 0.0f;
+				for (uint32_t i = 0; i < num_comps; i++)
+					max_std_dev = std::max(max_std_dev, comp_stats[i].get_std_dev());
+
+				float yl = clampf(max_std_dev / params.m_max_smooth_std_dev, 0.0f, 1.0f);
+				yl = yl * yl;
+
+				smooth_block_mse_scales(x, y) = lerp(params.m_smooth_max_mse_scale, 1.0f, yl);
+
+				if (num_comps == 4)
+				{
+					alpha_edge_vis(x, y).set((int)std::round(alpha_edge_yl * 255.0f));
+
+					smooth_block_mse_scales(x, y) = lerp(smooth_block_mse_scales(x, y), params.m_smooth_max_mse_scale, alpha_edge_yl);
+				}
+
+				smooth_vis(x, y).set(clamp((int)((smooth_block_mse_scales(x, y) - 1.0f) / (params.m_smooth_max_mse_scale - 1.0f) * 255.0f + .5f), 0, 255));
+			}
+
+			{
+				tracked_stat comp_stats[4];
+
+				const int S = 5;
+				for (int yd = -S; yd < S; yd++)
+				{
+					for (int xd = -S; xd < S; xd++)
+					{
+						const color_rgba& p = orig_img.get_clamped((int)x + xd, (int)y + yd);
+						comp_stats[0].update(p[0]);
+						comp_stats[1].update(p[1]);
+						comp_stats[2].update(p[2]);
+						if (num_comps == 4)
+							comp_stats[3].update(p[3]);
+					}
+				}
+
+				float max_std_dev = 0.0f;
+				for (uint32_t i = 0; i < num_comps; i++)
+					max_std_dev = std::max(max_std_dev, comp_stats[i].get_std_dev());
+
+				float yl = clampf(max_std_dev / params.m_max_ultra_smooth_std_dev, 0.0f, 1.0f);
+				yl = powf(yl, 3.0f);
+
+				smooth_block_mse_scales(x, y) = lerp(params.m_ultra_smooth_max_mse_scale, smooth_block_mse_scales(x, y), yl);
+
+				ultra_smooth_vis(x, y).set((int)std::round(yl * 255.0f));
+			}
+
+		}
+	}
+
+	if (params.m_debug_images)
+	{
+		save_png("dbg_smooth_vis.png", smooth_vis);
+		save_png("dbg_alpha_edge_vis.png", alpha_edge_vis);
+		save_png("dbg_ultra_smooth_vis.png", ultra_smooth_vis);
+	}
+}
+
 static bool rdo_png(rdo_png_params &params)
 {
 	const image& orig_img = params.m_orig_img;
@@ -1421,11 +1876,11 @@ static bool rdo_png(rdo_png_params &params)
 	const float lambda = params.m_lambda;
 	
 	// TODO
-	const float max_smooth_block_std_dev = 35.0f;
-	const float smooth_block_max_mse_scale = 250.0f;
+	const float max_smooth_std_dev = 35.0f;
+	const float smooth_max_mse_scale = 250.0f;
 
-	const float max_ultra_smooth_block_std_dev = 5.0f;
-	const float ultra_smooth_block_max_mse_scale = 1500.0f;
+	const float max_ultra_smooth_std_dev = 5.0f;
+	const float ultra_smooth_max_mse_scale = 1500.0f;
 
 	assert(params.m_level < MAX_LEVELS);
 	const rdo_png_level* pLevel = &g_levels[params.m_level];
@@ -1440,10 +1895,7 @@ static bool rdo_png(rdo_png_params &params)
 
 	const uint32_t num_match_order_b = pLevel->m_num_match_order_b;
 	const match_order* pMatch_order_b = pLevel->m_pMatch_order_b;
-		
-	image smooth_vis(width, height);
-	image alpha_edge_vis(width, height);
-	image ultra_smooth_vis(width, height);
+	
 	image match_vis(width, height);
 
 	vector2D<float> smooth_block_mse_scales(width, height);
@@ -1452,103 +1904,12 @@ static bool rdo_png(rdo_png_params &params)
 	{
 		printf("Stage 1\n");
 	}
-		
-	for (uint32_t y = 0; y < height; y++)
-	{
-		for (uint32_t x = 0; x < width; x++)
-		{
-			float alpha_edge_yl = 0.0f;
-			if ((num_comps == 4) && (params.m_alpha_is_opacity))
-			{
-				tracked_stat alpha_comp_stats;
-				for (int yd = -3; yd <= 3; yd++)
-				{
-					for (int xd = -3; xd <= 3; xd++)
-					{
-						const color_rgba& p = orig_img.get_clamped((int)x + xd, (int)y + yd);
-						alpha_comp_stats.update(p[3]);
-					}
-				}
 
-				float max_std_dev = alpha_comp_stats.get_std_dev();
-
-				float yl = clampf(max_std_dev / max_smooth_block_std_dev, 0.0f, 1.0f);
-				alpha_edge_yl = yl * yl;
-			}
-
-			{
-				tracked_stat comp_stats[4];
-				for (int yd = -1; yd <= 1; yd++)
-				{
-					for (int xd = -1; xd <= 1; xd++)
-					{
-						const color_rgba& p = orig_img.get_clamped((int)x + xd, (int)y + yd);
-						comp_stats[0].update(p[0]);
-						comp_stats[1].update(p[1]);
-						comp_stats[2].update(p[2]);
-						if (num_comps == 4)
-							comp_stats[3].update(p[3]);
-					}
-				}
-
-				float max_std_dev = 0.0f;
-				for (uint32_t i = 0; i < num_comps; i++)
-					max_std_dev = std::max(max_std_dev, comp_stats[i].get_std_dev());
-
-				float yl = clampf(max_std_dev / max_smooth_block_std_dev, 0.0f, 1.0f);
-				yl = yl * yl;
-
-				smooth_block_mse_scales(x, y) = lerp(smooth_block_max_mse_scale, 1.0f, yl);
-								
-				if (num_comps == 4)
-				{
-					alpha_edge_vis(x, y).set((int)std::round(alpha_edge_yl * 255.0f));
-
-					smooth_block_mse_scales(x, y) = lerp(smooth_block_mse_scales(x, y), smooth_block_max_mse_scale, alpha_edge_yl);
-				}
-
-				smooth_vis(x, y).set(clamp((int)((smooth_block_mse_scales(x, y) - 1.0f) / (smooth_block_max_mse_scale - 1.0f) * 255.0f + .5f), 0, 255));
-			}
-
-			{
-				tracked_stat comp_stats[4];
-				
-				const int S = 5;
-				for (int yd = -S; yd < S; yd++)
-				{
-					for (int xd = -S; xd < S; xd++)
-					{
-						const color_rgba& p = orig_img.get_clamped((int)x + xd, (int)y + yd);
-						comp_stats[0].update(p[0]);
-						comp_stats[1].update(p[1]);
-						comp_stats[2].update(p[2]);
-						if (num_comps == 4)
-							comp_stats[3].update(p[3]);
-					}
-				}
-
-				float max_std_dev = 0.0f;
-				for (uint32_t i = 0; i < num_comps; i++)
-					max_std_dev = std::max(max_std_dev, comp_stats[i].get_std_dev());
-
-				float yl = clampf(max_std_dev / max_ultra_smooth_block_std_dev, 0.0f, 1.0f);
-				yl = powf(yl, 3.0f);
-
-				smooth_block_mse_scales(x, y) = lerp(ultra_smooth_block_max_mse_scale, smooth_block_mse_scales(x, y), yl);
-
-				ultra_smooth_vis(x, y).set((int)std::round(yl * 255.0f));
-			}
-
-		}
-	}
-
-	if (params.m_debug_images)
-	{
-		save_png("dbg_smooth_vis.png", smooth_vis);
-		save_png("dbg_alpha_edge_vis.png", alpha_edge_vis);
-		save_png("dbg_ultra_smooth_vis.png", ultra_smooth_vis);
-	}
-
+	create_smooth_maps(
+		smooth_block_mse_scales,
+		orig_img,
+		params);
+			
 	uint64_t comp_size = 0;
 
 	const uint32_t num_encoder_passes = params.m_two_pass ? 2 : 1;
@@ -1955,8 +2316,10 @@ static bool rdo_png(rdo_png_params &params)
 		if (encoder_pass == (num_encoder_passes - 1))
 		{
 			g_use_miniz = false;
-			save_png(params.m_output_png_file, coded_img, 0, 0, -1, filters.data(), &comp_size);
+			save_png(params.m_output_file_data, coded_img, 0, 0, -1, filters.data(), &comp_size);
 			g_use_miniz = true;
+
+			params.m_output_image = coded_img;
 		}
 		else
 		{
@@ -1992,7 +2355,10 @@ static bool rdo_png(rdo_png_params &params)
 			}
 		}
 				
-		params.m_psnr = print_image_metrics(coded_img, orig_img, num_comps, params.m_y_psnr, params.m_print_stats);
+		params.m_psnr = compute_image_metrics(coded_img, orig_img, num_comps, params.m_y_psnr, params.m_print_stats);
+		if ((params.m_normal_map) || (params.m_print_normal_map_metrics))
+			params.m_angular_rms_error = compute_normal_map_image_metrics(coded_img, orig_img, params.m_print_stats, params);
+		
 		params.m_bpp = (comp_size * 8.0f) / (float)total_pixels;
 
 		if (params.m_print_stats)
@@ -2021,6 +2387,767 @@ static bool rdo_png(rdo_png_params &params)
 	return true;
 }
 
+#define QOI_IMPLEMENTATION
+#include "qoi.h"
+
+#pragma pack(push, 1)
+struct qoi_header
+{
+	char magic[4]; // magic bytes "qoif"
+	uint32_t width; // image width in pixels (BE)
+	uint32_t height; // image height in pixels (BE)
+	uint8_t channels; // 3 = RGB, 4 = RGBA
+	uint8_t colorspace; // 0 = sRGB with linear alpha 1 = all channels linear
+};
+#pragma pack(pop)
+
+static uint32_t byteswap_32(uint32_t v)
+{
+	return ((v & 0xFF) << 24) | (((v >> 8) & 0xFF) << 16) | (((v >> 16) & 0xFF) << 8) | ((v >> 24) & 0xFF);
+}
+
+static void encode_qoi(const image& img, uint8_vec& data)
+{
+	color_rgba hash[64];
+	clear_obj(hash);
+
+	data.resize(0);
+
+	qoi_header hdr;
+	memcpy(hdr.magic, "qoif", 4);
+	hdr.width = byteswap_32(img.get_width());
+	hdr.height = byteswap_32(img.get_height());
+	hdr.channels = img.has_alpha() ? 4 : 3;
+	hdr.colorspace = 0;
+	data.resize(sizeof(hdr));
+	memcpy(data.data(), &hdr, sizeof(hdr));
+
+	int prev_r = 0, prev_g = 0, prev_b = 0, prev_a = 255;
+	uint32_t cur_run_len = 0;
+
+	for (uint32_t y = 0; y < img.get_height(); y++)
+	{
+		for (uint32_t x = 0; x < img.get_width(); x++)
+		{
+			const color_rgba& c = img(x, y);
+
+			if ((c.r == prev_r) && (c.g == prev_g) && (c.b == prev_b) && (c.a == prev_a))
+			{
+				cur_run_len++;
+				if (cur_run_len == 62)
+				{
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+				}
+				continue;
+			}
+
+			if (cur_run_len)
+			{
+				data.push_back((64 + 128) | (cur_run_len - 1));
+				cur_run_len = 0;
+			}
+
+			uint32_t hash_idx = (c.r * 3 + c.g * 5 + c.b * 7 + c.a * 11) & 63;
+			color_rgba& hash_color = hash[hash_idx];
+
+			if (c == hash_color)
+			{
+				data.push_back(hash_idx);
+			}
+			else
+			{
+				hash[hash_idx] = c;
+
+				int dr = ((int)c.r - prev_r + 2) & 255;
+				int dg = ((int)c.g - prev_g + 2) & 255;
+				int db = ((int)c.b - prev_b + 2) & 255;
+
+				if (c.a == prev_a)
+				{
+					if ((dr <= 3) && (dg <= 3) && (db <= 3))
+					{
+						data.push_back(64 + (dr << 4) + (dg << 2) + db);
+					}
+					else
+					{
+						int g_diff = (int)c.g - prev_g;
+
+						dg = (g_diff + 32) & 255;
+
+						dr = (((int)c.r - prev_r) - g_diff + 8) & 255;
+						db = (((int)c.b - prev_b) - g_diff + 8) & 255;
+
+						if ((dg <= 63) && (dr <= 15) && (db <= 15))
+						{
+							data.push_back((uint8_t)(128 + dg));
+							data.push_back((uint8_t)((dr << 4) | db));
+						}
+						else
+						{
+							data.push_back(254);
+							data.push_back((uint8_t)c.r);
+							data.push_back((uint8_t)c.g);
+							data.push_back((uint8_t)c.b);
+						}
+					}
+				}
+				else
+				{
+					data.push_back(255);
+					data.push_back((uint8_t)c.r);
+					data.push_back((uint8_t)c.g);
+					data.push_back((uint8_t)c.b);
+					data.push_back((uint8_t)c.a);
+				}
+			}
+
+			prev_r = c.r;
+			prev_g = c.g;
+			prev_b = c.b;
+			prev_a = c.a;
+		}
+	}
+
+	if (cur_run_len)
+	{
+		data.push_back((64 + 128) | (cur_run_len - 1));
+		cur_run_len = 0;
+	}
+
+	for (uint32_t i = 0; i < 7; i++)
+		data.push_back(0);
+	data.push_back(1);
+}
+
+static bool encode_rdo_qoi(
+	const image& orig_img,
+	uint8_vec& data,
+	const rdo_png_params& params,
+	const vector2D<float>& smooth_block_mse_scales,
+	float lambda)
+{
+	// This function wasn't designed to deal with lambda=0, so nudge it up.
+	lambda = maximum(lambda, .0000125f);
+
+	const bool has_alpha = orig_img.has_alpha();
+	uint32_t num_comps = has_alpha ? 4 : 3;
+
+	color_rgba hash[64];
+	clear_obj(hash);
+
+	data.resize(0);
+
+	qoi_header hdr;
+	memcpy(hdr.magic, "qoif", 4);
+	hdr.width = byteswap_32(orig_img.get_width());
+	hdr.height = byteswap_32(orig_img.get_height());
+	hdr.channels = has_alpha ? 4 : 3;
+	hdr.colorspace = 0;
+	data.resize(sizeof(hdr));
+	memcpy(data.data(), &hdr, sizeof(hdr));
+
+	int prev_r = 0, prev_g = 0, prev_b = 0, prev_a = 255;
+	uint32_t cur_run_len = 0;
+
+	enum commands_t
+	{
+		cRUN,
+		cIDX,
+		cDELTA,
+		cLUMA,
+		cRGB,
+		cRGBA,
+	};
+
+	uint32_t total_run = 0, total_rgb = 0, total_rgba = 0, total_index = 0, total_delta = 0, total_luma = 0, total_run_pixels = 0;
+
+	for (uint32_t y = 0; y < orig_img.get_height(); y++)
+	{
+		if (params.m_print_progress)
+		{
+			if ((y & 15) == 0)
+			{
+				printf("\b\b\b\b\b\b\b\b%3.2f%%", y * 100.0f / orig_img.get_height());
+				fflush(stdout);
+			}
+		}
+
+		for (uint32_t x = 0; x < orig_img.get_width(); x++)
+		{
+			const color_rgba& c = orig_img(x, y);
+			const float mse_scale = smooth_block_mse_scales(x, y);
+
+			float best_mse = 0.0f;
+			float best_bits = 40.0f;
+			float best_t = best_mse + best_bits * lambda;
+			int best_command = cRGBA;
+			int best_index = 0, best_dr = 0, best_dg = 0, best_db = 0;
+
+			{
+				color_rgba trial_c(c.r, c.g, c.b, prev_a);
+				if (!should_reject(trial_c, c, 4, params))
+				{
+					float mse = compute_se(trial_c, c, 4, params);
+					float bits = 32.0f;
+					float trial_t = mse_scale * mse + bits * lambda;
+					if (trial_t < best_t)
+					{
+						best_mse = mse;
+						best_bits = bits;
+						best_t = trial_t;
+						best_command = cRGB;
+					}
+				}
+			}
+
+			{
+				color_rgba trial_c(prev_r, prev_g, prev_b, prev_a);
+				if (!should_reject(trial_c, c, 4, params))
+				{
+					float mse = compute_se(trial_c, c, 4, params);
+					float bits = cur_run_len ? 0 : 8.0f;
+					float trial_t = mse_scale * mse + bits * lambda;
+					if (trial_t < best_t)
+					{
+						best_mse = mse;
+						best_bits = bits;
+						best_t = trial_t;
+						best_command = cRUN;
+
+						if (best_mse == 0.0f)
+						{
+							cur_run_len++;
+							if (cur_run_len == 62)
+							{
+								total_run_pixels += cur_run_len;
+
+								data.push_back(0xC0 | (cur_run_len - 1));
+								cur_run_len = 0;
+
+								total_run++;
+							}
+
+							hash[(prev_r * 3 + prev_g * 5 + prev_b * 7 + prev_a * 11) & 63].set(prev_r, prev_g, prev_b, prev_a);
+
+							continue;
+						}
+					}
+				}
+			}
+
+			if (8.0f * lambda < best_t)
+			{
+				uint32_t hash_idx = (c.r * 3 + c.g * 5 + c.b * 7 + c.a * 11) & 63;
+				
+				// First try the INDEX command losslessly.
+				if (c == hash[hash_idx])
+				{
+					float bits = 8.0f;
+					float trial_t = bits * lambda;
+
+					assert(trial_t < best_t);
+
+					best_mse = 0.0f;
+					best_bits = bits;
+					best_t = trial_t;
+					best_command = cIDX;
+					best_index = hash_idx;
+				}
+				else
+				{
+					// Try a lossy INDEX command.
+					for (uint32_t i = 0; i < 64; i++)
+					{
+						if (!should_reject(hash[i], c, 4, params))
+						{
+							float mse = compute_se(hash[i], c, 4, params);
+							float bits = 8.0f;
+							float trial_t = mse_scale * mse + bits * lambda;
+							if (trial_t < best_t)
+							{
+								best_mse = mse;
+								best_bits = bits;
+								best_t = trial_t;
+								best_command = cIDX;
+								best_index = i;
+							}
+						}
+					}
+				}
+			}
+
+			if (8.0f * lambda < best_t)
+			{
+				bool delta_encodable_losslessly = false;
+
+				// First try the DELTA command losslessly.
+				if (c.a == prev_a)
+				{
+					int dr = ((int)c.r - prev_r + 2) & 255;
+					int dg = ((int)c.g - prev_g + 2) & 255;
+					int db = ((int)c.b - prev_b + 2) & 255;
+					
+					if ((dr <= 3) && (dg <= 3) && (db <= 3))
+					{
+						delta_encodable_losslessly = true;
+
+						float bits = 8.0f;
+						float trial_t = bits * lambda;
+
+						assert(trial_t < best_t);
+												
+						best_mse = 0.0f;
+						best_bits = bits;
+						best_t = trial_t;
+						best_command = cDELTA;
+						best_dr = dr - 2;
+						best_dg = dg - 2;
+						best_db = db - 2;
+					}
+				}
+
+				// Try a lossy DELTA command.
+				if (!delta_encodable_losslessly)
+				{
+					for (uint32_t i = 0; i < 64; i++)
+					{
+						int dr = ((i >> 4) & 3) - 2;
+						int dg = ((i >> 2) & 3) - 2;
+						int db = (i & 3) - 2;
+
+						color_rgba trial_c((prev_r + dr) & 255, (prev_g + dg) & 255, (prev_b + db) & 255, prev_a);
+
+						if (!should_reject(trial_c, c, 4, params))
+						{
+							float mse = compute_se(trial_c, c, 4, params);
+							float bits = 8.0f;
+							float trial_t = mse_scale * mse + bits * lambda;
+
+							if (trial_t < best_t)
+							{
+								best_mse = mse;
+								best_bits = bits;
+								best_t = trial_t;
+								best_command = cDELTA;
+								best_dr = dr;
+								best_dg = dg;
+								best_db = db;
+							}
+						}
+					}
+				}
+			}
+
+			if (16.0f * lambda < best_t)
+			{
+				bool luma_encodable_losslessly_in_rgb = false;
+
+				// First try the LUMA command losslessly in RGB (may not be lossy in alpha).
+				{
+					int g_diff = (int)c.g - prev_g;
+
+					int dg = (g_diff + 32) & 255;
+
+					int dr = (((int)c.r - prev_r) - g_diff + 8) & 255;
+					int db = (((int)c.b - prev_b) - g_diff + 8) & 255;
+
+					if ((dg <= 63) && (dr <= 15) && (db <= 15))
+					{
+						luma_encodable_losslessly_in_rgb = true;
+
+						color_rgba trial_c(c.r, c.g, c.b, prev_a);
+
+						if (!should_reject(trial_c, c, 4, params))
+						{
+							float mse = compute_se(trial_c, c, 4, params);
+							float bits = 16.0f;
+							float trial_t = mse_scale * mse + bits * lambda;
+
+							if (trial_t < best_t)
+							{
+								best_mse = mse;
+								best_bits = bits;
+								best_t = trial_t;
+								best_command = cLUMA;
+								best_dr = dr - 8;
+								best_dg = dg - 32;
+								best_db = db - 8;
+							}
+						}
+					}
+				}
+
+				// If we can't use it losslessly, try it lossy.
+				if ((!luma_encodable_losslessly_in_rgb) && (params.m_speed_mode != cFastestSpeed))
+				{
+					if (params.m_speed_mode == cNormalSpeed)
+					{
+						// Search all encodable LUMA commands.
+						for (uint32_t i = 0; i < 16384; i++)
+						{
+							int dr = ((i >> 6) & 15) - 8;
+							int dg = (i & 63) - 32;
+							int db = ((i >> 10) & 15) - 8;
+
+							color_rgba trial_c((prev_r + dg + dr) & 255, (prev_g + dg) & 255, (prev_b + dg + db) & 255, prev_a);
+
+							if (!should_reject(trial_c, c, 4, params))
+							{
+								float mse = compute_se(trial_c, c, 4, params);
+								float bits = 16.0f;
+								float trial_t = mse_scale * mse + bits * lambda;
+
+								if (trial_t < best_t)
+								{
+									best_mse = mse;
+									best_bits = bits;
+									best_t = trial_t;
+									best_command = cLUMA;
+									best_dr = dr;
+									best_dg = dg;
+									best_db = db;
+								}
+							}
+						}
+					}
+					else
+					{
+						// TODO: This isn't very smart. What if the G delta is encodable but R and/or B aren't?
+						const int g_deltas[] = { -24, -16, -14, -12, -10, -8, -6, -4, -3, -2, -1, 0, 1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 24 };
+						const int TOTAL_G_DELTAS = sizeof(g_deltas) / sizeof(g_deltas[0]);
+
+						for (int kg = 0; kg < TOTAL_G_DELTAS; kg++)
+						{
+							const int dg = g_deltas[kg];
+							for (uint32_t i = 0; i < 256; i++)
+							{
+								int dr = (i & 15) - 8;
+								int db = ((i >> 4) & 15) - 8;
+
+								color_rgba trial_c((prev_r + dg + dr) & 255, (prev_g + dg) & 255, (prev_b + dg + db) & 255, prev_a);
+
+								if (!should_reject(trial_c, c, 4, params))
+								{
+									float mse = compute_se(trial_c, c, 4, params);
+									float bits = 16.0f;
+									float trial_t = mse_scale * mse + bits * lambda;
+
+									if (trial_t < best_t)
+									{
+										best_mse = mse;
+										best_bits = bits;
+										best_t = trial_t;
+										best_command = cLUMA;
+										best_dr = dr;
+										best_dg = dg;
+										best_db = db;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			switch (best_command)
+			{
+			case cRUN:
+			{
+				cur_run_len++;
+				if (cur_run_len == 62)
+				{
+					total_run_pixels += cur_run_len;
+
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+
+					total_run++;
+				}
+
+				hash[(prev_r * 3 + prev_g * 5 + prev_b * 7 + prev_a * 11) & 63].set(prev_r, prev_g, prev_b, prev_a);
+
+				break;
+			}
+			case cRGB:
+			{
+				if (cur_run_len)
+				{
+					total_run_pixels += cur_run_len;
+
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+
+					total_run++;
+				}
+
+				data.push_back(254);
+				data.push_back((uint8_t)c.r);
+				data.push_back((uint8_t)c.g);
+				data.push_back((uint8_t)c.b);
+				hash[(c.r * 3 + c.g * 5 + c.b * 7 + prev_a * 11) & 63].set(c.r, c.g, c.b, prev_a);
+				prev_r = c.r;
+				prev_g = c.g;
+				prev_b = c.b;
+
+				total_rgb++;
+
+				break;
+			}
+			case cRGBA:
+			{
+				if (cur_run_len)
+				{
+					total_run_pixels += cur_run_len;
+
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+
+					total_run++;
+				}
+
+				data.push_back(255);
+				data.push_back((uint8_t)c.r);
+				data.push_back((uint8_t)c.g);
+				data.push_back((uint8_t)c.b);
+				data.push_back((uint8_t)c.a);
+				hash[(c.r * 3 + c.g * 5 + c.b * 7 + c.a * 11) & 63] = c;
+				prev_r = c.r;
+				prev_g = c.g;
+				prev_b = c.b;
+				prev_a = c.a;
+
+				total_rgba++;
+
+				break;
+			}
+			case cIDX:
+			{
+				if (cur_run_len)
+				{
+					total_run_pixels += cur_run_len;
+
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+
+					total_run++;
+				}
+
+				data.push_back(best_index);
+
+				prev_r = hash[best_index].r;
+				prev_g = hash[best_index].g;
+				prev_b = hash[best_index].b;
+				prev_a = hash[best_index].a;
+
+				total_index++;
+
+				break;
+			}
+			case cDELTA:
+			{
+				if (cur_run_len)
+				{
+					total_run_pixels += cur_run_len;
+
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+
+					total_run++;
+				}
+
+				assert(best_dr >= -2 && best_dr <= 1);
+				assert(best_dg >= -2 && best_dg <= 1);
+				assert(best_db >= -2 && best_db <= 1);
+
+				data.push_back(64 + ((best_dr + 2) << 4) + ((best_dg + 2) << 2) + (best_db + 2));
+
+				uint32_t decoded_r = (prev_r + best_dr) & 0xFF;
+				uint32_t decoded_g = (prev_g + best_dg) & 0xFF;
+				uint32_t decoded_b = (prev_b + best_db) & 0xFF;
+				uint32_t decoded_a = prev_a;
+
+				hash[(decoded_r * 3 + decoded_g * 5 + decoded_b * 7 + decoded_a * 11) & 63].set(decoded_r, decoded_g, decoded_b, decoded_a);
+
+				prev_r = decoded_r;
+				prev_g = decoded_g;
+				prev_b = decoded_b;
+				prev_a = decoded_a;
+
+				total_delta++;
+
+				break;
+			}
+			case cLUMA:
+			{
+				if (cur_run_len)
+				{
+					total_run_pixels += cur_run_len;
+
+					data.push_back(0xC0 | (cur_run_len - 1));
+					cur_run_len = 0;
+
+					total_run++;
+				}
+
+				assert(best_dr >= -8 && best_dr <= 7);
+				assert(best_dg >= -32 && best_dg <= 31);
+				assert(best_db >= -8 && best_db <= 7);
+
+				data.push_back((uint8_t)(128 + (best_dg + 32)));
+				data.push_back((uint8_t)(((best_dr + 8) << 4) | (best_db + 8)));
+
+				uint32_t decoded_r = (prev_r + best_dr + best_dg) & 0xFF;
+				uint32_t decoded_g = (prev_g + best_dg) & 0xFF;
+				uint32_t decoded_b = (prev_b + best_db + best_dg) & 0xFF;
+				uint32_t decoded_a = prev_a;
+
+				hash[(decoded_r * 3 + decoded_g * 5 + decoded_b * 7 + decoded_a * 11) & 63].set(decoded_r, decoded_g, decoded_b, decoded_a);
+
+				prev_r = decoded_r;
+				prev_g = decoded_g;
+				prev_b = decoded_b;
+				prev_a = decoded_a;
+
+				total_luma++;
+
+				break;
+			}
+			default:
+			{
+				assert(0);
+				break;
+			}
+			}
+
+		}
+	}
+
+	if (params.m_print_progress)
+	{
+		printf("\b\b\b\b\b\b\b\b        \b\b\b\b\b\b\b\b\n");
+		fflush(stdout);
+	}
+
+	if (cur_run_len)
+	{
+		total_run_pixels += cur_run_len;
+
+		data.push_back((64 + 128) | (cur_run_len - 1));
+		cur_run_len = 0;
+
+		total_run++;
+	}
+
+	for (uint32_t i = 0; i < 7; i++)
+		data.push_back(0);
+	data.push_back(1);
+
+	if (params.m_print_stats)
+	{
+		printf("Totals: Run: %u, Run Pixels: %u %3.2f%%, RGB: %u %3.2f%%, RGBA: %u %3.2f%%, INDEX: %u %3.2f%%, DELTA: %u %3.2f%%, LUMA: %u %3.2f%%\n\n",
+			total_run,
+			total_run_pixels, (total_run_pixels * 100.0f) / orig_img.get_total_pixels(),
+			total_rgb, (total_rgb * 100.0f) / orig_img.get_total_pixels(),
+			total_rgba, (total_rgba * 100.0f) / orig_img.get_total_pixels(),
+			total_index, (total_index * 100.0f) / orig_img.get_total_pixels(),
+			total_delta, (total_delta * 100.0f) / orig_img.get_total_pixels(),
+			total_luma, (total_luma * 100.0f) / orig_img.get_total_pixels());
+	}
+
+	return true;
+}
+
+static bool rdo_qoi(rdo_png_params& params)
+{
+	const image& orig_img = params.m_orig_img;
+
+	const uint32_t width = orig_img.get_width();
+	const uint32_t height = orig_img.get_height();
+	const uint32_t total_pixels = orig_img.get_total_pixels();
+	const bool has_alpha = orig_img.has_alpha();
+	const uint32_t num_comps = has_alpha ? 4 : 3;
+	
+	vector2D<float> smooth_block_mse_scales(width, height);
+
+	float lambda = params.m_lambda;
+
+	if (params.m_debug_images)
+	{
+		g_use_miniz = false;
+		save_png("dbg_orig.png", orig_img);
+		g_use_miniz = true;
+	}
+
+	int ref_qoi_len = 0;
+	qoi_desc ref_qoi_desc;
+	ref_qoi_desc.width = orig_img.get_width();
+	ref_qoi_desc.height = orig_img.get_height();
+	ref_qoi_desc.channels = 4;
+	ref_qoi_desc.colorspace = 0;
+	void* pRef_qoi_data = qoi_encode(orig_img.get_ptr(), &ref_qoi_desc, &ref_qoi_len);
+	if (params.m_debug_images)
+		write_data_to_file("dbg_orig.qoi", pRef_qoi_data, ref_qoi_len);
+	free(pRef_qoi_data);
+
+	printf("Lossless QOI encoded size: %i bytes, Bitrate: %3.3f bits/pixel\n", ref_qoi_len, (ref_qoi_len * 8.0f) / total_pixels);
+
+	create_smooth_maps(
+		smooth_block_mse_scales,
+		orig_img,
+		params);
+
+	if (!encode_rdo_qoi(
+		orig_img,
+		params.m_output_file_data,
+		params,
+		smooth_block_mse_scales,
+		lambda))
+	{
+		return false;
+	}
+			
+	const uint32_t rdo_qoi_len = params.m_output_file_data.size();
+
+	qoi_desc rdo_qoi_desc;
+	void* pDecoded_RDO_image = qoi_decode((const void*)params.m_output_file_data.data(), (int)rdo_qoi_len, &rdo_qoi_desc, 4);
+	if (!pDecoded_RDO_image)
+	{
+		fprintf(stderr, "qoi_decode() failed!\n");
+		return false;
+	}
+
+	image decoded_image((uint8_t*)pDecoded_RDO_image, rdo_qoi_desc.width, rdo_qoi_desc.height, 4);
+	free(pDecoded_RDO_image);
+	pDecoded_RDO_image = nullptr;
+
+	if (params.m_debug_images)
+	{
+		save_png("dbg_coded.png", decoded_image);
+		save_png("dbg_coded_rgb.png", decoded_image, cImageSaveIgnoreAlpha);
+		save_png("dbg_coded_alpha.png", decoded_image, cImageSaveGrayscale, 3);
+	}
+	
+	params.m_output_image = decoded_image;
+
+	params.m_psnr = compute_image_metrics(decoded_image, orig_img, 4, params.m_y_psnr, params.m_print_stats);
+	if ((params.m_normal_map) || (params.m_print_normal_map_metrics))
+		params.m_angular_rms_error = compute_normal_map_image_metrics(decoded_image, orig_img, params.m_print_stats, params);
+
+	params.m_bpp = (rdo_qoi_len * 8.0f) / total_pixels;
+
+	if (params.m_print_stats)
+	{
+		printf("Compressed file size: %u bytes, Bitrate: %3.3f bits/pixel, RGB(A) Effectiveness: %3.3f PSNR per bits/pixel, Y: %3.3f PSNR per bits/pixel\n",
+			rdo_qoi_len,
+			params.m_bpp,
+			params.m_psnr / params.m_bpp,
+			params.m_y_psnr / params.m_bpp);
+	}
+		
+	return true;
+}
+
 static void print_help()
 {
 	printf("rdopng " RDO_PNG_VERSION "\n\n");
@@ -2031,12 +3158,21 @@ static void print_help()
 	printf("-level X: Set parsing level, valid X range is [0-29], default is 0 (fastest/lowest quality/least effective)\n");
 	printf("-two_pass: Compress image in two passes for significantly higher compression\n");
 	printf("-linear: Use linear RGB(A) metrics instead of the default perceptual sRGB/Oklab metrics\n");
+	printf("-normal: Normal map mode (linear metrics, print normal map statistics, angular error and rejection metrics)\n");
+	printf("-snorm: Normal map texels use SNORM GPU encoding vs. UNORM\n");
 
 	printf("\n");
 	printf("-quiet: Suppress all output to stdout\n");
+	printf("-no_progress: Suppress all progress related output\n");
 	printf("-output X: Set output filename to X\n");
 	printf("-debug: Debug output and images\n");
 	printf("-no_cache: Compute the Oklab lookup table at startup instead of caching the table to disk in the executable's directory\n");
+	
+	printf("\nQOI specific options:\n");
+	printf("-qoi: Encode a .QOI file instead of a .PNG file\n");
+	printf("-unpack_qoi_to_png: Unpack coded .QOI file and save as a .PNG file\n");
+	printf("-uber: Best QOI compression, but slowest\n");
+	printf("-better: Better QOI compression, but slower\n");
 
 	printf("\nColor distance and parsing options:\n");
 	printf("-wr X, -wg X, -wb X, -wa X: Sets individual R,G,B, or A color distance weights to X, valid X range is [0,256], default is 1 (only used in -linear mode)\n");
@@ -2053,6 +3189,85 @@ static void print_help()
 	printf("-rlab X: Set Oklab ab reject distance threshold to X, valid X range is [0,1.0], default is .05, higher values=more allowed chroma/hue error\n");
 	printf("-rrgb X: Set RGB reject threshold value to X (only used in -linear mode), valid X range is [0,256], default is 32, higher values=higher max RGB error\n");
 	printf("-rr X, -rg X, -rb, X, -ra X: Set individual R,G,B, or A reject threshold value to X (only used in -linear mode), valid X range is [0,256], default is 32, higher values=higher max alpha error\n");
+
+	printf("\nPerceptual options:\n");
+	printf("-no_mse_scaling: Disable MSE scaling on smooth/ultra-smooth image regions\n");
+	printf("-max_smooth_std_dev: Set smooth region maximum standard RGB(A) deviation, default is 35\n");
+	printf("-smooth_max_mse_scale: Set smooth region max MSE scale multiplier, default is 250 (PNG) or 2500 (QOI)\n");
+	printf("-max_ultra_smooth_std_dev: Set ultra-smooth region maximum standard RGB(A) deviaton, default is 5\n");
+	printf("-ultra_smooth_max_mse_scale: Set ultra-smooth region max MSE scale multiplier, default is 1500 (PNG) or 2500 (QOI)\n");
+}
+
+int qoi_test(const image& orig_img)
+{
+	uint8_vec qoi_data;
+	encode_qoi(orig_img, qoi_data);
+
+	write_vec_to_file("mine.qoi", qoi_data);
+
+	printf("My encoded size: %u\n", (uint32_t)qoi_data.size());
+
+	int qoi_len = 0;
+	qoi_desc desc;
+	desc.width = orig_img.get_width();
+	desc.height = orig_img.get_height();
+	desc.channels = 4;
+	desc.colorspace = 0;
+	void *p = qoi_encode(orig_img.get_ptr(), &desc, &qoi_len);
+	write_data_to_file("image.qoi", p, qoi_len);
+	free(p);
+
+	printf("QOI encoded size: %i\n", qoi_len);
+			
+	void* pImage = qoi_decode((const void *)qoi_data.data(), (int)qoi_data.size(), &desc, 4);
+	if (!pImage)
+	{
+		fprintf(stderr, "qoi_decode() failed!\n");
+		return EXIT_FAILURE;
+	}
+
+	image decoded_image((uint8_t *)pImage, desc.width, desc.height, 4);
+	free(pImage);
+	pImage = nullptr;
+
+	if (decoded_image != orig_img)
+	{
+		fprintf(stderr, "Decode validation failed!\n");
+	}
+
+	save_png("decoded.png", decoded_image);
+	save_png("decoded_rgb.png", decoded_image, cImageSaveIgnoreAlpha);
+	save_png("decoded_alpha.png", decoded_image, cImageSaveGrayscale, 3);
+
+	printf("OK\n");
+			
+	return EXIT_SUCCESS;
+}
+
+static void normalize_image(image& img, const rdo_png_params &params)
+{
+	image orig_img(img);
+
+	for (uint32_t y = 0; y < img.get_height(); y++)
+	{
+		for (uint32_t x = 0; x < img.get_width(); x++)
+		{
+			color_rgba& c = img(x, y);
+
+			vec3F cf(decode_normal(c, params));
+			
+			cf.normalize_in_place();
+						
+			c = encode_normal_exhaustive(cf, c.a, params);
+
+		} // x
+	} // y
+
+	if (params.m_print_stats)
+	{
+		printf("\nResults after normalizing normal map:\n");
+		compute_normal_map_image_metrics(img, orig_img, true, params);
+	}
 }
 
 int main(int arg_c, const char** arg_v)
@@ -2074,13 +3289,18 @@ int main(int arg_c, const char** arg_v)
 
 		bool quiet_mode = false;
 		bool caching_enabled = true;
+		bool qoi_mode = false;
+		bool normalize_first = false;
+		bool unpack_qoi_to_png = false;
+
+		float max_smooth_std_dev = -1.0f, smooth_max_mse_scale = -1.0f, max_ultra_smooth_std_dev = -1.0f, ultra_smooth_max_mse_scale = -1.0f;
 
 		if (arg_c <= 1)
 		{
 			print_help();
 			return EXIT_FAILURE;
 		}
-												
+																
 		int arg_index = 1;
 		while (arg_index < arg_c)
 		{
@@ -2102,13 +3322,22 @@ int main(int arg_c, const char** arg_v)
 			else if (strcasecmp(pArg, "-quiet") == 0)
 			{
 				quiet_mode = true;
-
-				rp.m_print_stats = false;
+			}
+			else if (strcasecmp(pArg, "-no_progress") == 0)
+			{
 				rp.m_print_progress = false;
 			}
 			else if (strcasecmp(pArg, "-rt") == 0)
 			{
 				rp.m_transparent_reject_test = true;
+			}
+			else if (strcasecmp(pArg, "-qoi") == 0)
+			{
+				qoi_mode = true;
+			}
+			else if (strcasecmp(pArg, "-unpack_qoi_to_png") == 0)
+			{
+				unpack_qoi_to_png = true;
 			}
 			else if (strcasecmp(pArg, "-level") == 0)
 			{
@@ -2119,7 +3348,35 @@ int main(int arg_c, const char** arg_v)
 			else if (strcasecmp(pArg, "-lambda") == 0)
 			{
 				REMAINING_ARGS_CHECK(1);
-				rp.m_lambda = clamp<float>((float)atof(arg_v[arg_index + 1]), 0.0f, 100000.0f);
+				rp.m_lambda = clamp<float>((float)atof(arg_v[arg_index + 1]), 0.0f, 250000.0f);
+				arg_count++;
+			}
+			else if (strcasecmp(pArg, "-no_mse_scaling") == 0)
+			{
+				rp.m_no_mse_scaling = true;
+			}
+			else if (strcasecmp(pArg, "-max_smooth_std_dev") == 0)
+			{
+				REMAINING_ARGS_CHECK(1);
+				max_smooth_std_dev = clamp<float>((float)atof(arg_v[arg_index + 1]), 0.000125f, 250000.0f);
+				arg_count++;
+			}
+			else if (strcasecmp(pArg, "-smooth_max_mse_scale") == 0)
+			{
+				REMAINING_ARGS_CHECK(1);
+				smooth_max_mse_scale = clamp<float>((float)atof(arg_v[arg_index + 1]), 0.000125f, 250000.0f);
+				arg_count++;
+			}
+			else if (strcasecmp(pArg, "-max_ultra_smooth_std_dev") == 0)
+			{
+				REMAINING_ARGS_CHECK(1);
+				max_ultra_smooth_std_dev = clamp<float>((float)atof(arg_v[arg_index + 1]), 0.000125f, 250000.0f);
+				arg_count++;
+			}
+			else if (strcasecmp(pArg, "-ultra_smooth_max_mse_scale") == 0)
+			{
+				REMAINING_ARGS_CHECK(1);
+				ultra_smooth_max_mse_scale = clamp<float>((float)atof(arg_v[arg_index + 1]), 0.000125f, 250000.0f);
 				arg_count++;
 			}
 			else if (strcasecmp(pArg, "-output") == 0)
@@ -2254,6 +3511,38 @@ int main(int arg_c, const char** arg_v)
 			{
 				rp.m_two_pass = true;
 			}
+			else if (strcasecmp(pArg, "-uber") == 0)
+			{
+				rp.m_speed_mode = cNormalSpeed;
+			}
+			else if (strcasecmp(pArg, "-better") == 0)
+			{
+				rp.m_speed_mode = cFasterSpeed;
+			}
+			else if (strcasecmp(pArg, "-fastest") == 0)
+			{
+				rp.m_speed_mode = cFastestSpeed;
+			}
+			else if (strcasecmp(pArg, "-print_normal_map_metrics") == 0)
+			{
+				rp.m_print_normal_map_metrics = true;
+			}
+			else if (strcasecmp(pArg, "-normal_map") == 0)
+			{
+				rp.m_normal_map = true;
+				rp.m_perceptual_error = false;
+				rp.m_reject_thresholds[0] = 20;
+				rp.m_reject_thresholds[1] = 20;
+				rp.m_reject_thresholds[2] = 20;
+			}
+			else if (strcasecmp(pArg, "-normalize") == 0)
+			{
+				normalize_first = true;
+			}
+			else if (strcasecmp(pArg, "-snorm") == 0)
+			{
+				rp.m_snorm8 = true;
+			}
 			else if (pArg[0] == '-')
 			{
 				fprintf(stderr, "Unrecognized command line option: %s\n", pArg);
@@ -2272,6 +3561,13 @@ int main(int arg_c, const char** arg_v)
 			arg_index += arg_count;
 		}
 
+		if (quiet_mode)
+		{
+			rp.m_print_stats = false;
+			rp.m_print_progress = false;
+			rp.m_print_debug_output = false;
+		}
+
 		if (!quiet_mode)
 		{
 			printf("rdopng " RDO_PNG_VERSION "\n");
@@ -2279,6 +3575,7 @@ int main(int arg_c, const char** arg_v)
 
 		init_srgb_to_linear();
 		init_oklab_table(arg_v[0], quiet_mode, caching_enabled);
+		init_acos_lookup();
 
 		if (!input_filename.size())
 		{
@@ -2292,7 +3589,11 @@ int main(int arg_c, const char** arg_v)
 			string_remove_extension(output_filename);
 			if (!output_filename.size())
 				output_filename = "out";
-			output_filename += "_rdo.png";
+			
+			if (qoi_mode)
+				output_filename += "_rdo.qoi";
+			else
+				output_filename += "_rdo.png";
 		}
 
 		uint64_t input_filesize = 0;
@@ -2318,16 +3619,63 @@ int main(int arg_c, const char** arg_v)
 				input_filename.c_str(), rp.m_orig_img.get_width(), rp.m_orig_img.get_height(), rp.m_orig_img.has_alpha(),
 				(unsigned long long)input_filesize, (input_filesize * 8.0f) / rp.m_orig_img.get_total_pixels());
 		}
+
+		if (rp.m_debug_images)
+		{
+			save_png("dbg_loaded.png", rp.m_orig_img);
+		}
+
+		if (normalize_first)
+		{
+			normalize_image(rp.m_orig_img, rp);
+		}
 				
+		if (qoi_mode)
+		{
+			// QOI-specific settings - more artifact suppression on smooth/ultra-smooth regions vs. PNG.
+			rp.m_smooth_max_mse_scale = QOI_DEF_SMOOTH_MAX_MSE_SCALE;
+			rp.m_ultra_smooth_max_mse_scale = QOI_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE;
+		}
+
+		if (max_smooth_std_dev != -1.0f)
+			rp.m_max_smooth_std_dev = max_smooth_std_dev;
+
+		if (smooth_max_mse_scale != -1.0f)
+			rp.m_smooth_max_mse_scale = smooth_max_mse_scale;
+
+		if (max_ultra_smooth_std_dev != -1.0f)
+			rp.m_ultra_smooth_max_mse_scale = max_ultra_smooth_std_dev;
+
+		if (ultra_smooth_max_mse_scale != -1.0f)
+			rp.m_ultra_smooth_max_mse_scale = ultra_smooth_max_mse_scale;
+
+		if (rp.m_print_debug_output)
+		{
+			printf("\nParameters:\n");
+			rp.print();
+			printf("\n");
+		}
+								
 		interval_timer tm;
 		tm.start();
 
-		if (rdo_png(rp))
+		bool status = false;
+
+		if (qoi_mode)
+		{
+			status = rdo_qoi(rp);
+		}
+		else
+		{
+			status = rdo_png(rp);
+		}
+
+		if (status)
 		{ 
 			if (!quiet_mode)
 				printf("Encoded in %3.3f secs\n", tm.get_elapsed_secs());
 
-			if (!write_vec_to_file(output_filename.c_str(), rp.m_output_png_file))
+			if (!write_vec_to_file(output_filename.c_str(), rp.m_output_file_data))
 			{
 				fprintf(stderr, "Failed writing to file \"%s\"\n", output_filename.c_str());
 				return EXIT_FAILURE;
@@ -2336,6 +3684,24 @@ int main(int arg_c, const char** arg_v)
 			if (!quiet_mode)
 			{
 				printf("Wrote output file \"%s\"\n", output_filename.c_str());
+			}
+
+			if (unpack_qoi_to_png)
+			{
+				std::string png_filename(output_filename);
+				string_remove_extension(png_filename);
+				png_filename += ".png";
+				
+				if (!save_png(png_filename.c_str(), rp.m_output_image))
+				{
+					fprintf(stderr, "Failed writing to file \"%s\"\n", png_filename.c_str());
+					return EXIT_FAILURE;
+				}
+
+				if (!quiet_mode)
+				{
+					printf("Wrote output file \"%s\"\n", png_filename.c_str());
+				}
 			}
 	
 			status = EXIT_SUCCESS;

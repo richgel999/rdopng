@@ -1200,6 +1200,9 @@ static unsigned inflate(unsigned char** out, size_t* outsize,
    }
    else
    {
+       if (*out)
+           lodepng_free(*out);
+
       *out = (unsigned char*)p;
       *outsize = out_len;
       return 0;
@@ -4580,6 +4583,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     if(*w > 1) predict += lodepng_get_raw_size_idat((*w + 0) >> 1, (*h + 1) >> 1, color);
     predict += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, color);
   }
+  
   if(!state->error && !ucvector_reserve(&scanlines, predict)) state->error = 83; /*alloc fail*/
   if(!state->error) {
     state->error = zlib_decompress(&scanlines.data, &scanlines.size, idat.data,

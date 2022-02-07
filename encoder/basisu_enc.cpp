@@ -626,6 +626,7 @@ namespace basisu
 			else
 			{
 				state.info_png.interlace_method = 0;
+				state.encoder.auto_convert = false;
 				state.info_raw.colortype = LCT_RGBA;
 				state.info_raw.bitdepth = 8;
 				state.info_png.color.colortype = LCT_RGBA;
