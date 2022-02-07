@@ -1,5 +1,5 @@
 # rdopng
-Rate-Distortion Optimized Lossy PNG Encoding Tool
+Rate-Distortion Optimized Lossy PNG and QOI Encoding Tool
 
 rdopng is a command line tool which uses LZ match optimization, Lagrangian multiplier [rate distortion optimization (RDO)](https://en.wikipedia.org/wiki/Rate%E2%80%93distortion_optimization), a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode 24/32bpp PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonably fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
 
@@ -35,6 +35,12 @@ Encodes a .PNG/.BMP/.TGA/.JPG file to "./file_rdo.png":
 rdopng file.png
 ```
 
+Encodes a .PNG/.BMP/.TGA/.JPG file to "./file_rdo.qoi" (and also unpacks the coded image and saves it as .PNG):
+
+```
+rdopng -qoi -unpack_qoi_to_png file.png 
+```
+
 Encodes smaller files but will be 2x slower:
 
 ```
@@ -57,6 +63,12 @@ Enable debug output and write output to z.png:
 
 ```
 rdopng -debug file.png -output z.png
+```
+
+Load a normal map, normalize it, pack it using angular normal map metrics, decoded/encode texels using GPU SNORM unpacking (instead of the default UNORM):
+
+```
+rdopng -normalize -normal_map -snorm file.png
 ```
 
 Level ranges from 0-29. Levels 0-9 use up to 4 pixel long matches, levels 10-17 use up to 6 pixel long matches, and 18-23 use up to 6 or 12 pixel long matches. Levels 24-29 use exhaustive matching and are beyond impractical except on tiny images. 
