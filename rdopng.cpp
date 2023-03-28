@@ -37,7 +37,7 @@
 	#define BASISU_CATCH_EXCEPTIONS 1
 #endif
 
-#define RDO_PNG_VERSION "v1.09"
+#define RDO_PNG_VERSION "v1.10"
 
 #define RDO_PNG_USE_APPROX_ACOS (1)
 
@@ -48,6 +48,9 @@ const float DEF_ULTRA_SMOOTH_MAX_MSE_SCALE = 1500.0F;
 
 const float QOI_DEF_SMOOTH_MAX_MSE_SCALE = 2500.0f;
 const float QOI_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE = 5000.0f;
+
+const float LZ4I_DEF_SMOOTH_MAX_MSE_SCALE = 8000.0f;
+const float LZ4I_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE = 10000.0f;
 
 using namespace basisu;
 using namespace buminiz;
@@ -60,9 +63,6 @@ namespace buminiz
 }
 
 const float RAD_TO_DEG = 57.29577951f;
-
-//const int SEARCH_DIST = 32;
-//const bool exhaustive_search = false;
 
 const uint32_t MAX_DELTA_COLORS = 12;
 
@@ -191,6 +191,129 @@ static const match_order g_match_order6c[] =
 	{6, 1,1,1,1,1,1},
 };
 const uint32_t NUM_MATCH_ORDER_6C = sizeof(g_match_order6c) / sizeof(g_match_order6c[0]);
+
+// These values are in bytes, where=1 literal and >=4 match length.
+static const match_order g_lz4_match_order_12_bytes[] =
+{
+	{ 1, 12,0,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 11,1,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 8,4,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 7,5,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 6,6,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 5,7,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 4,8,0,0,0,0,0,0,0,0,0,0 },
+	{ 2, 1,11,0,0,0,0,0,0,0,0,0,0 },
+	{ 3, 10,1,1,0,0,0,0,0,0,0,0,0 },
+	{ 3, 7,4,1,0,0,0,0,0,0,0,0,0 },
+	{ 3, 6,5,1,0,0,0,0,0,0,0,0,0 },
+	{ 3, 5,6,1,0,0,0,0,0,0,0,0,0 },
+	{ 3, 4,7,1,0,0,0,0,0,0,0,0,0 },
+	{ 3, 1,10,1,0,0,0,0,0,0,0,0,0 },
+	{ 3, 7,1,4,0,0,0,0,0,0,0,0,0 },
+	{ 3, 4,4,4,0,0,0,0,0,0,0,0,0 },
+	{ 3, 1,7,4,0,0,0,0,0,0,0,0,0 },
+	{ 3, 6,1,5,0,0,0,0,0,0,0,0,0 },
+	{ 3, 1,6,5,0,0,0,0,0,0,0,0,0 },
+	{ 3, 5,1,6,0,0,0,0,0,0,0,0,0 },
+	{ 3, 1,5,6,0,0,0,0,0,0,0,0,0 },
+	{ 3, 4,1,7,0,0,0,0,0,0,0,0,0 },
+	{ 3, 1,4,7,0,0,0,0,0,0,0,0,0 },
+	{ 3, 1,1,10,0,0,0,0,0,0,0,0,0 },
+	{ 4, 9,1,1,1,0,0,0,0,0,0,0,0 },
+	{ 4, 6,4,1,1,0,0,0,0,0,0,0,0 },
+	{ 4, 5,5,1,1,0,0,0,0,0,0,0,0 },
+	{ 4, 4,6,1,1,0,0,0,0,0,0,0,0 },
+	{ 4, 1,9,1,1,0,0,0,0,0,0,0,0 },
+	{ 4, 6,1,4,1,0,0,0,0,0,0,0,0 },
+	{ 4, 1,6,4,1,0,0,0,0,0,0,0,0 },
+	{ 4, 5,1,5,1,0,0,0,0,0,0,0,0 },
+	{ 4, 1,5,5,1,0,0,0,0,0,0,0,0 },
+	{ 4, 4,1,6,1,0,0,0,0,0,0,0,0 },
+	{ 4, 1,4,6,1,0,0,0,0,0,0,0,0 },
+	{ 4, 1,1,9,1,0,0,0,0,0,0,0,0 },
+	{ 4, 6,1,1,4,0,0,0,0,0,0,0,0 },
+	{ 4, 1,6,1,4,0,0,0,0,0,0,0,0 },
+	{ 4, 1,1,6,4,0,0,0,0,0,0,0,0 },
+	{ 4, 5,1,1,5,0,0,0,0,0,0,0,0 },
+	{ 4, 1,5,1,5,0,0,0,0,0,0,0,0 },
+	{ 4, 1,1,5,5,0,0,0,0,0,0,0,0 },
+	{ 4, 4,1,1,6,0,0,0,0,0,0,0,0 },
+	{ 4, 1,4,1,6,0,0,0,0,0,0,0,0 },
+	{ 4, 1,1,4,6,0,0,0,0,0,0,0,0 },
+	{ 4, 1,1,1,9,0,0,0,0,0,0,0,0 },
+	{ 5, 8,1,1,1,1,0,0,0,0,0,0,0 },
+	{ 5, 5,4,1,1,1,0,0,0,0,0,0,0 },
+	{ 5, 4,5,1,1,1,0,0,0,0,0,0,0 },
+	{ 5, 1,8,1,1,1,0,0,0,0,0,0,0 },
+	{ 5, 5,1,4,1,1,0,0,0,0,0,0,0 },
+	{ 5, 1,5,4,1,1,0,0,0,0,0,0,0 },
+	{ 5, 4,1,5,1,1,0,0,0,0,0,0,0 },
+	{ 5, 1,4,5,1,1,0,0,0,0,0,0,0 },
+	{ 5, 1,1,8,1,1,0,0,0,0,0,0,0 },
+	{ 5, 5,1,1,4,1,0,0,0,0,0,0,0 },
+	{ 5, 1,5,1,4,1,0,0,0,0,0,0,0 },
+	{ 5, 1,1,5,4,1,0,0,0,0,0,0,0 },
+	{ 5, 4,1,1,5,1,0,0,0,0,0,0,0 },
+	{ 5, 1,4,1,5,1,0,0,0,0,0,0,0 },
+	{ 5, 1,1,4,5,1,0,0,0,0,0,0,0 },
+	{ 5, 1,1,1,8,1,0,0,0,0,0,0,0 },
+	{ 5, 5,1,1,1,4,0,0,0,0,0,0,0 },
+	{ 5, 1,5,1,1,4,0,0,0,0,0,0,0 },
+	{ 5, 1,1,5,1,4,0,0,0,0,0,0,0 },
+	{ 5, 1,1,1,5,4,0,0,0,0,0,0,0 },
+	{ 5, 4,1,1,1,5,0,0,0,0,0,0,0 },
+	{ 5, 1,4,1,1,5,0,0,0,0,0,0,0 },
+	{ 5, 1,1,4,1,5,0,0,0,0,0,0,0 },
+	{ 5, 1,1,1,4,5,0,0,0,0,0,0,0 },
+	{ 5, 1,1,1,1,8,0,0,0,0,0,0,0 },
+	{ 6, 7,1,1,1,1,1,0,0,0,0,0,0 },
+	{ 6, 4,4,1,1,1,1,0,0,0,0,0,0 },
+	{ 6, 1,7,1,1,1,1,0,0,0,0,0,0 },
+	{ 6, 4,1,4,1,1,1,0,0,0,0,0,0 },
+	{ 6, 1,4,4,1,1,1,0,0,0,0,0,0 },
+	{ 6, 1,1,7,1,1,1,0,0,0,0,0,0 },
+	{ 6, 4,1,1,4,1,1,0,0,0,0,0,0 },
+	{ 6, 1,4,1,4,1,1,0,0,0,0,0,0 },
+	{ 6, 1,1,4,4,1,1,0,0,0,0,0,0 },
+	{ 6, 1,1,1,7,1,1,0,0,0,0,0,0 },
+	{ 6, 4,1,1,1,4,1,0,0,0,0,0,0 },
+	{ 6, 1,4,1,1,4,1,0,0,0,0,0,0 },
+	{ 6, 1,1,4,1,4,1,0,0,0,0,0,0 },
+	{ 6, 1,1,1,4,4,1,0,0,0,0,0,0 },
+	{ 6, 1,1,1,1,7,1,0,0,0,0,0,0 },
+	{ 6, 4,1,1,1,1,4,0,0,0,0,0,0 },
+	{ 6, 1,4,1,1,1,4,0,0,0,0,0,0 },
+	{ 6, 1,1,4,1,1,4,0,0,0,0,0,0 },
+	{ 6, 1,1,1,4,1,4,0,0,0,0,0,0 },
+	{ 6, 1,1,1,1,4,4,0,0,0,0,0,0 },
+	{ 6, 1,1,1,1,1,7,0,0,0,0,0,0 },
+	{ 7, 6,1,1,1,1,1,1,0,0,0,0,0 },
+	{ 7, 1,6,1,1,1,1,1,0,0,0,0,0 },
+	{ 7, 1,1,6,1,1,1,1,0,0,0,0,0 },
+	{ 7, 1,1,1,6,1,1,1,0,0,0,0,0 },
+	{ 7, 1,1,1,1,6,1,1,0,0,0,0,0 },
+	{ 7, 1,1,1,1,1,6,1,0,0,0,0,0 },
+	{ 7, 1,1,1,1,1,1,6,0,0,0,0,0 },
+	{ 8, 5,1,1,1,1,1,1,1,0,0,0,0 },
+	{ 8, 1,5,1,1,1,1,1,1,0,0,0,0 },
+	{ 8, 1,1,5,1,1,1,1,1,0,0,0,0 },
+	{ 8, 1,1,1,5,1,1,1,1,0,0,0,0 },
+	{ 8, 1,1,1,1,5,1,1,1,0,0,0,0 },
+	{ 8, 1,1,1,1,1,5,1,1,0,0,0,0 },
+	{ 8, 1,1,1,1,1,1,5,1,0,0,0,0 },
+	{ 8, 1,1,1,1,1,1,1,5,0,0,0,0 },
+	{ 9, 4,1,1,1,1,1,1,1,1,0,0,0 },
+	{ 9, 1,4,1,1,1,1,1,1,1,0,0,0 },
+	{ 9, 1,1,4,1,1,1,1,1,1,0,0,0 },
+	{ 9, 1,1,1,4,1,1,1,1,1,0,0,0 },
+	{ 9, 1,1,1,1,4,1,1,1,1,0,0,0 },
+	{ 9, 1,1,1,1,1,4,1,1,1,0,0,0 },
+	{ 9, 1,1,1,1,1,1,4,1,1,0,0,0 },
+	{ 9, 1,1,1,1,1,1,1,4,1,0,0,0 },
+	{ 9, 1,1,1,1,1,1,1,1,4,0,0,0 },
+	{ 12, 1,1,1,1,1,1,1,1,1,1,1,1 }
+};
+const uint32_t NUM_LZ4_MATCH_ORDER_12 = sizeof(g_lz4_match_order_12_bytes) / sizeof(g_lz4_match_order_12_bytes[0]);
 
 enum speed_mode
 {
@@ -504,6 +627,11 @@ static const uint8_t g_tdefl_large_dist_extra[128] =
 static inline float square(float f)
 {
 	return f * f;
+}
+
+static inline uint32_t byteswap_32(uint32_t v)
+{
+	return ((v & 0xFF) << 24) | (((v >> 8) & 0xFF) << 16) | (((v >> 16) & 0xFF) << 8) | ((v >> 24) & 0xFF);
 }
 
 class tracked_stat
@@ -2401,11 +2529,6 @@ struct qoi_header
 };
 #pragma pack(pop)
 
-static uint32_t byteswap_32(uint32_t v)
-{
-	return ((v & 0xFF) << 24) | (((v >> 8) & 0xFF) << 16) | (((v >> 16) & 0xFF) << 8) | ((v >> 24) & 0xFF);
-}
-
 static void encode_qoi(const image& img, uint8_vec& data)
 {
 	color_rgba hash[64];
@@ -3090,7 +3213,8 @@ static bool rdo_qoi(rdo_png_params& params)
 		write_data_to_file("dbg_orig.qoi", pRef_qoi_data, ref_qoi_len);
 	free(pRef_qoi_data);
 
-	printf("Lossless QOI encoded size: %i bytes, Bitrate: %3.3f bits/pixel\n", ref_qoi_len, (ref_qoi_len * 8.0f) / total_pixels);
+	if (params.m_print_stats)
+		printf("Lossless QOI encoded size: %i bytes, Bitrate: %3.3f bits/pixel\n", ref_qoi_len, (ref_qoi_len * 8.0f) / total_pixels);
 
 	create_smooth_maps(
 		smooth_block_mse_scales,
@@ -3148,6 +3272,862 @@ static bool rdo_qoi(rdo_png_params& params)
 	return true;
 }
 
+#include "lz4.h"
+#include "lz4hc.h"
+
+#pragma pack(push, 1)
+struct lz4i_header
+{
+	char sig[4]; // signature bytes "lz4i"
+	uint32_t width; // image width in pixels (BE)
+	uint32_t height; // image height in pixels (BE)
+	uint8_t channels; // 3 = RGB, 4 = RGBA
+	uint8_t colorspace; // 0 = sRGB with linear alpha 1 = all channels linear
+};
+#pragma pack(pop)
+
+static inline bool check_for_rejection(const uint8_t* pTrial_buf, const uint8_t* pOrig_buf, uint32_t num_pixels, uint32_t num_comps, const rdo_png_params& params)
+{
+	uint32_t ofs = 0;
+
+	color_rgba o(0, 255), t(0, 255);
+	for (uint32_t i = 0; i < num_pixels; i++)
+	{
+		t.r = pTrial_buf[ofs];
+		t.g = pTrial_buf[ofs + 1];
+		t.b = pTrial_buf[ofs + 2];
+		if (num_comps == 4)
+			t.a = pTrial_buf[ofs + 3];
+
+		o.r = pOrig_buf[ofs];
+		o.g = pOrig_buf[ofs + 1];
+		o.b = pOrig_buf[ofs + 2];
+		if (num_comps == 4)
+			o.a = pOrig_buf[ofs + 3];
+
+		if (should_reject(t, o, num_comps, params))
+			return true;
+		
+		ofs += num_comps;
+	}
+
+	return false;
+}
+
+static inline float compute_mse(const uint8_t* pTrial_buf, const uint8_t* pOrig_buf, uint32_t num_pixels, uint32_t num_comps, const rdo_png_params &params)
+{
+	float total_se = 0.0f;
+
+	uint32_t ofs = 0;
+	
+	color_rgba o(0, 255), t(0, 255);
+	for (uint32_t i = 0; i < num_pixels; i++)
+	{
+		t.r = pTrial_buf[ofs];
+		t.g = pTrial_buf[ofs + 1];
+		t.b = pTrial_buf[ofs + 2];
+		if (num_comps == 4)
+			t.a = pTrial_buf[ofs + 3];
+
+		o.r = pOrig_buf[ofs];
+		o.g = pOrig_buf[ofs + 1];
+		o.b = pOrig_buf[ofs + 2];
+		if (num_comps == 4)
+			o.a = pOrig_buf[ofs + 3];
+				
+		total_se += compute_se(t, o, num_comps, params);
+		
+		ofs += num_comps;
+	}
+	
+	return total_se / num_pixels;
+}
+
+const uint32_t RDO_LZ4_PIXEL_QUANT = 4;
+const uint32_t RDO_LZ4_MIN_MATCH_LEN_IN_BYTES = 4;
+
+static bool insert_lz4_match(
+	const image &orig_img, image &coded_img,
+	int xi, int yi, int width, int height, 
+	uint32_t insert_len_in_bytes, uint32_t dst_insert_ofs,
+	int lookahead_size_in_bytes, int lookahead_size_in_pixels,
+	const uint8_t *pOrig_buf, 
+	uint8_t *pBest_buf, float &best_t, float &best_bits, float &best_mse, uint32_t& best_trial_len, int &best_trial_dist,
+	int match_dist_to_favor, bool &used_favored_match_dist,
+	float lambda, uint32_t num_comps,
+	const vector2D<float>& smooth_block_mse_scales,
+	const rdo_png_params &params)
+{
+	bool found_match = false;
+	
+	const bool exhaustive_search = false;
+
+	int SCANLINES_TO_CHECK = 4;
+	int search_dist = 16;
+
+	if (params.m_speed_mode == cNormalSpeed)
+	{
+		SCANLINES_TO_CHECK = 8;
+		search_dist = 64;
+	}
+	else if (params.m_speed_mode == cFasterSpeed)
+	{
+		SCANLINES_TO_CHECK = 4;
+		search_dist = 16;
+	}
+	else if (params.m_speed_mode == cFastestSpeed)
+	{
+		SCANLINES_TO_CHECK = 2;
+		search_dist = 8;
+	}
+		
+	uint8_t initial_buf[RDO_LZ4_PIXEL_QUANT * 4];
+	memcpy(initial_buf, pBest_buf, lookahead_size_in_bytes);
+	
+	best_t = 1e+9f;
+	best_bits = 0.0f;
+	best_mse = 0.0f;
+	best_trial_len = 0;
+	best_trial_dist = 0;
+	used_favored_match_dist = false;
+
+	const uint32_t first_pixel_ofs = dst_insert_ofs / num_comps;
+	const uint32_t first_pixel_byte_ofs = first_pixel_ofs * num_comps;
+		
+	const uint32_t total_pixels = ((dst_insert_ofs + insert_len_in_bytes - 1) / num_comps) - first_pixel_ofs + 1;
+
+	float mse_scale = 0.0f;
+	for (uint32_t i = 0; i < (uint32_t)minimum<uint32_t>(total_pixels, width - xi); i++)
+		mse_scale = maximum(mse_scale, smooth_block_mse_scales(xi + first_pixel_ofs + i, yi));
+		
+	for (int yd = 0; yd < (int)SCANLINES_TO_CHECK; yd++)
+	{
+		const int y = (int)yi - yd;
+		if (y < 0)
+			break;
+
+		int x_start, x_end;
+		const int total_passes = ((yd == 1) && !exhaustive_search) ? 2 : 1;
+		for (int pass = 0; pass < total_passes; pass++)
+		{
+			const int n = total_pixels;
+
+			if (exhaustive_search)
+			{
+				x_end = yd ? ((int)width - n) : ((int)xi - n);
+				x_start = 0;
+			}
+			else
+			{
+				if (!yd)
+				{
+					if ((int)xi < n)
+						continue;
+
+					x_start = maximum<int>((int)xi - search_dist * 2, 0);
+					x_end = maximum<int>((int)xi - n, 0);
+				}
+				else if ((yd == 1) && (pass == 0))
+				{
+					if (width <= (uint32_t)search_dist * 2)
+						continue;
+
+					x_start = maximum<int>((int)width - search_dist, 0);
+					x_end = width - n;
+				}
+				else
+				{
+					x_start = maximum<int>((int)xi - search_dist, 0);
+					x_end = minimum<int>((int)xi + search_dist, (int)width - n);
+				}
+			}
+
+			for (int xd = x_end; xd >= x_start; xd--)
+			{
+				assert((xd + n - 1) < (int)width);
+				assert((yd != 0) || ((xd + n - 1) < (int)xi));
+
+				const uint32_t max_match_len_in_pixels = minimum<uint32_t>(x_end - xd + 1, RDO_LZ4_PIXEL_QUANT);
+
+				uint8_t trial_buf[RDO_LZ4_PIXEL_QUANT * 4];
+				memcpy(trial_buf, initial_buf, lookahead_size_in_bytes);
+
+				uint32_t trial_buf_ofs = dst_insert_ofs;
+				const uint32_t end_ofs = dst_insert_ofs + insert_len_in_bytes;
+
+				uint32_t src_pix_ofs = 0;
+				uint32_t cur_comp = dst_insert_ofs % num_comps;
+				while ((trial_buf_ofs < end_ofs) && (src_pix_ofs < max_match_len_in_pixels))
+				{
+					const color_rgba& c = coded_img(xd + src_pix_ofs, y);
+
+					while (cur_comp < num_comps)
+					{
+						assert((trial_buf_ofs % num_comps) == (cur_comp % num_comps));
+
+						trial_buf[trial_buf_ofs++] = c[cur_comp];
+						if (trial_buf_ofs == end_ofs)
+							break;
+
+						cur_comp++;
+					}
+					cur_comp = 0;
+
+					src_pix_ofs++;
+				}
+				assert(trial_buf_ofs <= RDO_LZ4_PIXEL_QUANT * num_comps);
+
+				const uint32_t actual_insert_len_in_bytes = trial_buf_ofs - dst_insert_ofs;
+
+				if (actual_insert_len_in_bytes != insert_len_in_bytes)
+					continue;
+
+				if (check_for_rejection(trial_buf + first_pixel_byte_ofs, pOrig_buf + first_pixel_byte_ofs, total_pixels, num_comps, params))
+					continue;
+
+				float trial_mse = compute_mse(trial_buf + first_pixel_byte_ofs, pOrig_buf + first_pixel_byte_ofs, total_pixels, num_comps, params);
+
+				int cur_match_dist = (int)(xi * num_comps + dst_insert_ofs + yi * width * num_comps) - (int)(xd * num_comps + (dst_insert_ofs % num_comps) + y * width * num_comps);
+
+				assert(cur_match_dist >= (int)num_comps);
+
+				float trial_bits = 24.0f;
+				if ((dst_insert_ofs == 0) && (match_dist_to_favor != -1))
+				{
+					if (cur_match_dist == match_dist_to_favor)
+						trial_bits = 0;
+				}
+				
+				float trial_t = mse_scale * trial_mse + trial_bits * lambda;
+
+				if (trial_t < best_t)
+				{
+					best_t = trial_t;
+					best_bits = trial_bits;
+					best_mse = trial_mse;
+					memcpy(pBest_buf, trial_buf, lookahead_size_in_bytes);
+					best_trial_len = actual_insert_len_in_bytes;
+					best_trial_dist = cur_match_dist;
+					found_match = true;
+					used_favored_match_dist = (trial_bits == 0.0f);
+				}
+
+			} // xd
+		
+		} // pass
+
+	} // yd
+
+	return found_match;
+}
+
+static bool encode_rdo_lz4i(
+	const image& orig_img,
+	uint8_vec& data,
+	const rdo_png_params& params,
+	const vector2D<float>& smooth_block_mse_scales,
+	float lambda)
+{
+	const uint32_t width = orig_img.get_width();
+	const uint32_t height = orig_img.get_height();
+	const uint32_t total_pixels = orig_img.get_total_pixels();
+	const bool has_alpha = orig_img.has_alpha();
+	const uint32_t num_comps = has_alpha ? 4 : 3;
+	const uint32_t total_bytes = total_pixels * num_comps;
+
+	image coded_img(width, height);
+
+	const uint32_t lookahead_size_in_bytes = RDO_LZ4_PIXEL_QUANT * num_comps;
+
+	uint8_t initial_match_flags[RDO_LZ4_PIXEL_QUANT * 4];
+	memset(initial_match_flags, 0, sizeof(initial_match_flags));
+
+	uint32_t match_order_hist[NUM_LZ4_MATCH_ORDER_12];
+	clear_obj(match_order_hist);
+
+	int match_dist_to_favor = -1;
+
+	basisu::vector<uint_vec> future_matches(total_bytes);
+	int_vec match_distances(total_bytes);
+	match_distances.set_all(-1);
+
+	for (int yi = 0; yi < (int)height; yi++)
+	{
+		if ((yi & 31) == 0)
+			printf("%u\n", yi);
+
+		int xi = 0;
+
+		while (xi < (int)width)
+		{
+			const uint32_t lookahead_size_in_pixels = minimum<uint32_t>(RDO_LZ4_PIXEL_QUANT, width - xi);
+			const uint32_t lookahead_size_in_bytes = lookahead_size_in_pixels * num_comps;
+
+			if (lookahead_size_in_pixels * num_comps < RDO_LZ4_MIN_MATCH_LEN_IN_BYTES)
+			{
+				coded_img(xi, yi) = orig_img(xi, yi);
+				xi++;
+				continue;
+			}
+
+			float mse_scale = 0.0f;
+			for (uint32_t i = 0; i < (uint32_t)lookahead_size_in_pixels; i++)
+				mse_scale = maximum(mse_scale, smooth_block_mse_scales(xi + i, yi));
+
+			uint8_t orig_buf[RDO_LZ4_PIXEL_QUANT * 4];
+			uint32_t orig_buf_ofs = 0;
+			for (uint32_t i = 0; i < lookahead_size_in_pixels; i++)
+			{
+				const color_rgba& c = orig_img(xi + i, yi);
+				orig_buf[orig_buf_ofs++] = c.r;
+				orig_buf[orig_buf_ofs++] = c.g;
+				orig_buf[orig_buf_ofs++] = c.b;
+				if (num_comps == 4)
+					orig_buf[orig_buf_ofs++] = c.a;
+			}
+
+			float best_mse = 0.0f;
+			float best_bits = (float)(lookahead_size_in_bytes * 8) + (lookahead_size_in_bytes >= 15 ? 16 : 8);
+			float best_t = best_bits * lambda;
+			int best_match_dist_end = -1;
+			uint32_t best_match_order = NUM_LZ4_MATCH_ORDER_12 - 1;
+			uint8_t best_buf[RDO_LZ4_PIXEL_QUANT * 4];
+			memcpy(best_buf, orig_buf, lookahead_size_in_bytes);
+			int best_distances[MAX_DELTA_COLORS];
+			memset(best_distances, 0xFF, sizeof(best_distances));
+
+			for (uint32_t match_order_index = 0; match_order_index < NUM_LZ4_MATCH_ORDER_12; match_order_index++)
+			{
+				const match_order& order = g_lz4_match_order_12_bytes[match_order_index];
+
+				uint32_t total_matches = 0, total_match_len = 0, total_coded_matches = 0;
+
+				uint8_t best_parse_buf[RDO_LZ4_PIXEL_QUANT * 4];
+				memcpy(best_parse_buf, orig_buf, lookahead_size_in_bytes);
+				int trial_match_dist_end = -1;
+				
+				int trial_distances[MAX_DELTA_COLORS];
+				memset(trial_distances, 0xFF, sizeof(trial_distances));
+
+				uint32_t dst_ofs = 0;
+				
+				for (uint32_t l = 0; l < order.v[0]; l++)
+				{
+					uint32_t len = order.v[1 + l];
+					if (len > lookahead_size_in_bytes)
+						goto skip;
+					if ((dst_ofs + len) > lookahead_size_in_bytes)
+						goto skip;
+
+					if (len > 1)
+					{
+						float best_trial_t, best_trial_bits, best_trial_mse;
+						uint32_t best_trial_len;
+						int best_trial_dist;
+						bool used_favored_match_dist;
+
+						bool found_match = insert_lz4_match(
+							orig_img, coded_img,
+							xi, yi, width, height,
+							len, dst_ofs,
+							lookahead_size_in_bytes, lookahead_size_in_pixels,
+							orig_buf,
+							best_parse_buf, best_trial_t, best_trial_bits, best_trial_mse, best_trial_len, best_trial_dist,
+							(dst_ofs == 0) ? match_dist_to_favor : -1, used_favored_match_dist,
+							lambda, num_comps,
+							smooth_block_mse_scales,
+							params);
+
+						if (found_match)
+						{
+							trial_distances[l] = best_trial_dist;
+
+							if ((dst_ofs + len) == lookahead_size_in_bytes)
+								trial_match_dist_end = best_trial_dist;
+
+							total_matches++;
+							total_match_len += best_trial_len;
+
+							if (!used_favored_match_dist)
+								total_coded_matches++;
+						}
+					}
+
+					dst_ofs += len;
+				}
+				assert(dst_ofs == lookahead_size_in_bytes);
+
+				if (total_matches)
+				{
+					float trial_mse = compute_mse(best_parse_buf, orig_buf, lookahead_size_in_pixels, num_comps, params);
+					float trial_bits = total_coded_matches * 24.0f + (float)(lookahead_size_in_bytes - total_match_len) * 8.0f;
+					float trial_t = mse_scale * trial_mse + trial_bits * lambda;
+
+					if (trial_t < best_t)
+					{
+						best_t = trial_t;
+						best_bits = trial_bits;
+						best_mse = trial_mse;
+						memcpy(best_buf, best_parse_buf, lookahead_size_in_bytes);
+						best_match_order = match_order_index;
+						best_match_dist_end = trial_match_dist_end;
+						memcpy(best_distances, trial_distances, sizeof(best_distances));
+					}
+				}
+
+			skip:;
+			}
+
+			match_order_hist[best_match_order]++;
+
+			uint32_t ofs = 0;
+			for (uint32_t i = 0; i < lookahead_size_in_pixels; i++)
+			{
+				color_rgba& c = coded_img(xi + i, yi);
+
+				c.r = best_buf[ofs++];
+				c.g = best_buf[ofs++];
+				c.b = best_buf[ofs++];
+				if (num_comps == 4)
+					c.a = best_buf[ofs++];
+			}
+																		
+			{
+				const match_order& best_order = g_lz4_match_order_12_bytes[best_match_order];
+
+				const uint32_t cur_ofs = (xi + yi * width) * num_comps;
+
+				uint32_t dst_ofs = 0;
+
+				for (uint32_t l = 0; l < best_order.v[0]; l++)
+				{
+					uint32_t len = best_order.v[1 + l];
+					if (len > lookahead_size_in_bytes)
+						break;
+					if ((dst_ofs + len) > lookahead_size_in_bytes)
+						break;
+
+					if (len > 1)
+					{
+						for (uint32_t j = 0; j < len; j++)
+						{
+							uint32_t ofs = cur_ofs + dst_ofs + j;
+							match_distances[ofs] = best_distances[l];
+
+							if (best_distances[l] != -1)
+							{
+								future_matches[ofs - best_distances[l]].push_back(ofs);
+							}
+						}
+					}
+					else
+					{
+						assert(best_distances[l] == -1);
+					}
+
+					dst_ofs += len;
+				}
+
+			}
+
+			xi += lookahead_size_in_pixels;
+
+			match_dist_to_favor = best_match_dist_end;
+
+		} // xi
+	} // yi
+
+	if (params.m_print_debug_output)
+	{
+		printf("Match order usage histogram:\n");
+		for (uint32_t i = 0; i < NUM_LZ4_MATCH_ORDER_12; i++)
+		{
+			printf("%u: %u\n", i, match_order_hist[i]);
+		}
+	}
+
+	if (params.m_debug_images)
+	{
+		save_png("dbg_before_refine.png", coded_img);
+	}
+
+#if 1
+	uint8_vec orig_bytes, coded_bytes;
+	orig_bytes.reserve(total_bytes);
+	coded_bytes.reserve(total_bytes);
+	
+	for (uint32_t y = 0; y < height; y++)
+	{
+		for (uint32_t x = 0; x < width; x++)
+		{
+			const color_rgba& c = coded_img(x, y);
+			coded_bytes.push_back(c.r);
+			coded_bytes.push_back(c.g);
+			coded_bytes.push_back(c.b);
+			if (num_comps == 4)
+				coded_bytes.push_back(c.a);
+
+			const color_rgba& o = orig_img(x, y);
+			orig_bytes.push_back(o.r);
+			orig_bytes.push_back(o.g);
+			orig_bytes.push_back(o.b);
+			if (num_comps == 4)
+				orig_bytes.push_back(o.a);
+		}
+	}
+
+	for (uint32_t i = 0; i < total_bytes; i++)
+	{
+		int match_distance = match_distances[i];
+		if (match_distance == -1)
+			continue;
+
+		if ((match_distance == 0) || (match_distance > (int)i))
+		{
+			assert(0);
+			return false;
+		}
+
+		int cur_byte = coded_bytes[i];
+		int match_byte = coded_bytes[i - match_distance];
+
+		if (cur_byte != match_byte)
+		{
+			assert(0);
+			return false;
+		}
+	}
+
+	uint8_vec byte_processed_flags(total_bytes);
+	//image processed_img(width, height);
+
+	for (uint32_t i = 0; i < total_bytes; i++)
+	{
+		int match_distance = match_distances[i];
+		if (match_distance == -1)
+			continue;
+
+		if (byte_processed_flags[i])
+			continue;
+
+		uint_vec byte_indices;
+		uint_vec offset_stack;
+
+		offset_stack.push_back(i);
+		while (offset_stack.size())
+		{
+			uint32_t ofs = offset_stack.back();
+			offset_stack.pop_back();
+
+			assert(!byte_processed_flags[ofs]);
+						
+			assert(byte_indices.find(ofs) == -1);
+			byte_indices.push_back(ofs);
+
+			if (match_distances[ofs] != -1)
+			{
+				if (byte_indices.find(ofs - match_distances[ofs]) == -1)
+					offset_stack.push_back(ofs - match_distances[ofs]);
+				
+				assert(coded_bytes[ofs] == coded_bytes[ofs - match_distances[ofs]]);
+			}
+
+			for (uint32_t i = 0; i < future_matches[ofs].size(); i++)
+			{
+				uint32_t future_ofs = future_matches[ofs][i];
+				
+				assert(coded_bytes[ofs] == coded_bytes[future_ofs]);
+
+				if (byte_indices.find(future_ofs) == -1)
+					offset_stack.push_back(future_ofs);
+			}
+		}
+				
+		uint32_t total_val = 0;
+
+		for (uint32_t i = 0; i < byte_indices.size(); i++)
+		{
+			uint32_t ofs = byte_indices[i];
+
+			uint32_t pixel_index = ofs / num_comps;
+			uint32_t comp_index = ofs % num_comps;
+			uint32_t x = pixel_index % width;
+			uint32_t y = pixel_index / width;
+
+			int orig_val = orig_bytes[ofs];
+			//int coded_val = coded_bytes[ofs];
+
+			total_val += orig_val;
+		}
+
+		const uint8_t new_val = (uint8_t)((total_val + (byte_indices.size() / 2)) / byte_indices.size());
+		
+		for (uint32_t i = 0; i < byte_indices.size(); i++)
+		{
+			uint32_t ofs = byte_indices[i];
+
+			uint32_t pixel_index = ofs / num_comps;
+			uint32_t comp_index = ofs % num_comps;
+			uint32_t x = pixel_index % width;
+			uint32_t y = pixel_index / width;
+						
+			assert(!byte_processed_flags[ofs]);
+			coded_img(x, y).m_comps[comp_index] = new_val;
+
+			byte_processed_flags[ofs] = true;
+		}
+
+		//printf("%u, %u %u %u\n", byte_indices.size(), vote_add, vote_sub, vote_unchanged);
+	}
+#endif
+
+	if (params.m_debug_images)
+	{
+		save_png("dbg_before_dither.png", coded_img);
+	}
+
+	data.resize(0);
+
+	lz4i_header hdr;
+	memcpy(hdr.sig, "lz4i", 4);
+	hdr.width = byteswap_32(orig_img.get_width());
+	hdr.height = byteswap_32(orig_img.get_height());
+	hdr.channels = (uint8_t)num_comps;
+	hdr.colorspace = 0;
+	data.resize(sizeof(hdr));
+	memcpy(data.data(), &hdr, sizeof(hdr));
+
+	uint8_vec bytes_to_compress;
+	bytes_to_compress.reserve(width * height * num_comps);
+	for (uint32_t y = 0; y < height; y++)
+	{
+		for (uint32_t x = 0; x < width; x++)
+		{
+			const color_rgba& c = coded_img(x, y);
+
+			bytes_to_compress.push_back(c.r);
+			bytes_to_compress.push_back(c.g);
+			bytes_to_compress.push_back(c.b);
+			if (num_comps == 4)
+				bytes_to_compress.push_back(c.a);
+		} // x
+	} // y
+
+	const size_t data_ofs = data.size();
+	const int comp_bound = LZ4_compressBound(bytes_to_compress.size());
+	data.resize(data_ofs + comp_bound);
+
+	int lz4_size = LZ4_compress_HC((const char*)bytes_to_compress.data(), (char*)(data.data() + data_ofs), bytes_to_compress.size(), comp_bound, LZ4HC_CLEVEL_MAX);
+	if (!lz4_size)
+	{
+		fprintf(stderr, "LZ4_compress_HC() failed!\n");
+		return false;
+	}
+	
+	data.resize(data_ofs + lz4_size);
+
+	return true;
+}
+
+static bool decode_lz4i(const uint8_t *pData, size_t data_size, image &dst_img)
+{
+	if ((data_size > INT_MAX) || (data_size < (sizeof(lz4i_header) + 1)))
+		return false;
+
+	const lz4i_header* pHeader = reinterpret_cast<const lz4i_header*>(pData);
+	if (memcmp(pHeader->sig, "lz4i", 4) != 0)
+		return false;
+
+	uint32_t width = byteswap_32(pHeader->width);
+	uint32_t height = byteswap_32(pHeader->height);
+
+	const uint32_t MAX_DIM = 65536 * 8;
+	if ((width < 1) || (width > MAX_DIM) || (height < 1) || (height > MAX_DIM))
+		return false;
+
+	uint32_t num_comps = pHeader->channels;
+
+	if ((num_comps < 3) || (num_comps > 4))
+		return false;
+		
+	dst_img.resize(width, height);
+
+	if (num_comps == 3)
+	{
+		uint8_vec decomp_buf(width * height * 3);
+
+		interval_timer tm;
+		double min_time = 1e+9f;
+		int res;
+		for (uint32_t i = 0; i < 10; i++)
+		{
+			tm.start();
+
+			res = LZ4_decompress_safe((char*)pData + sizeof(lz4i_header), (char*)decomp_buf.data(), (int)(data_size - sizeof(lz4i_header)), (int)decomp_buf.size());
+			if (res <= 0)
+				return false;
+			
+			min_time = minimum(min_time, tm.get_elapsed_secs());
+		}
+		
+		if (res != decomp_buf.size())
+			return false;
+
+		printf("Decompression rate: %3.3f megapixels/sec\n", ((double)(width * height) / min_time) / (1024.0f*1024.0f));
+				
+		const uint8_t* pSrc = decomp_buf.data();
+		uint8_t* pDst = (uint8_t*)dst_img.get_ptr();
+		
+		const uint32_t total_pixels = dst_img.get_total_pixels();
+		for (uint32_t t = 0; t < total_pixels; t++)
+		{
+			pDst[0] = pSrc[0];
+			pDst[1] = pSrc[1];
+			pDst[2] = pSrc[2];
+			pDst[3] = 0xFF;
+			pSrc += 3;
+			pDst += 4;
+		}
+	}
+	else
+	{
+		int res = LZ4_decompress_safe((char*)pData + sizeof(lz4i_header), (char*)dst_img.get_ptr(), (int)(data_size - sizeof(lz4i_header)), width * height * 4);
+		if (res <= 0)
+			return false;
+
+		if (res != width * height * 4)
+			return false;
+	}
+
+	return true;
+}
+
+static bool rdo_lz4i(rdo_png_params& params)
+{
+	const image before_processed_orig_img(params.m_orig_img);
+
+	const image& orig_img = params.m_orig_img;
+
+	const uint32_t width = orig_img.get_width();
+	const uint32_t height = orig_img.get_height();
+	const uint32_t total_pixels = orig_img.get_total_pixels();
+	const bool has_alpha = orig_img.has_alpha();
+	const uint32_t num_comps = has_alpha ? 4 : 3;
+
+	vector2D<float> smooth_block_mse_scales(width, height);
+
+	float lambda = params.m_lambda;
+
+	if (params.m_debug_images)
+		save_png("dbg_orig.png", orig_img);
+
+	uint8_vec rgb_image;
+	for (uint32_t y = 0; y < height; y++)
+	{
+		for (uint32_t x = 0; x < width; x++)
+		{
+			const color_rgba& c = orig_img(x, y);
+			rgb_image.push_back(c.r);
+			rgb_image.push_back(c.g);
+			rgb_image.push_back(c.b);
+		}
+	}
+
+	const uint8_t* pOrig_image_bytes = has_alpha ? (const uint8_t *)orig_img.get_ptr() : rgb_image.get_ptr();
+	const uint32_t orig_image_len = orig_img.get_total_pixels() * num_comps;
+
+	uint8_vec orig_image_compressed(LZ4_compressBound(orig_image_len));
+	int lz4i_lossless_size = LZ4_compress_HC((const char *)pOrig_image_bytes, (char *)orig_image_compressed.data(), orig_image_len, orig_image_compressed.size(), LZ4HC_CLEVEL_MAX);
+	if (!lz4i_lossless_size)
+	{
+		fprintf(stderr, "LZ4_compress_HC() failed!\n");
+		return false;
+	}
+	orig_image_compressed.resize(lz4i_lossless_size);
+
+	if (params.m_print_stats)
+		printf("Lossless LZ4I encoded size: %i bytes, Bitrate: %3.3f bits/pixel\n", lz4i_lossless_size + (uint32_t)sizeof(lz4i_header), ((lz4i_lossless_size + (uint32_t)sizeof(lz4i_header)) * 8.0f) / total_pixels);
+
+	create_smooth_maps(
+		smooth_block_mse_scales,
+		orig_img,
+		params);
+
+#if 0
+	for (uint32_t y = 0; y < height; y++)
+	{
+		for (uint32_t x = 0; x < width; x++)
+		{
+			color_rgba &c = params.m_orig_img(x, y);
+
+			const int R = 8;
+
+			int diff[3] = { c.r % R, c.g % R, c.b % R };
+
+			// 0 6
+			// 4 2
+			const int s_matrix[4] = { 0, 6, 4, 2 };
+			int threshold = s_matrix[(x & 1) + (y & 1) * 2];
+
+			uint32_t cur_ofs = (x + y * width) * num_comps;
+						
+			for (int d = 0; d < 3; d++)
+			{
+				if (diff[d] > threshold)
+					c[d] = clamp255(((c[d] / R) + 1) * R);
+				else
+					c[d] = clamp255((c[d] / R) * R);
+			}
+		}
+	}
+	
+	if (params.m_debug_images)
+		save_png("dbg_orig_after_dither.png", params.m_orig_img);
+#endif
+
+	if (!encode_rdo_lz4i(
+		orig_img,
+		params.m_output_file_data,
+		params,
+		smooth_block_mse_scales,
+		lambda))
+	{
+		return false;
+	}
+
+	const uint32_t rdo_lz4i_len = (uint32_t)params.m_output_file_data.size();
+
+	image decoded_image;
+	if (!decode_lz4i(params.m_output_file_data.data(), params.m_output_file_data.size(), decoded_image))
+		return false;
+
+	if (params.m_debug_images)
+	{
+		save_png("dbg_coded.png", decoded_image);
+		save_png("dbg_coded_rgb.png", decoded_image, cImageSaveIgnoreAlpha);
+		save_png("dbg_coded_alpha.png", decoded_image, cImageSaveGrayscale, 3);
+	}
+
+	params.m_output_image = decoded_image;
+
+	params.m_psnr = compute_image_metrics(decoded_image, before_processed_orig_img, 4, params.m_y_psnr, params.m_print_stats);
+	if ((params.m_normal_map) || (params.m_print_normal_map_metrics))
+		params.m_angular_rms_error = compute_normal_map_image_metrics(decoded_image, before_processed_orig_img, params.m_print_stats, params);
+
+	params.m_bpp = (rdo_lz4i_len * 8.0f) / total_pixels;
+
+	if (params.m_print_stats)
+	{
+		printf("Compressed file size: %u bytes, Bitrate: %3.3f bits/pixel, RGB(A) Effectiveness: %3.3f PSNR per bits/pixel, Y: %3.3f PSNR per bits/pixel\n",
+			rdo_lz4i_len,
+			params.m_bpp,
+			params.m_psnr / params.m_bpp,
+			params.m_y_psnr / params.m_bpp);
+	}
+
+	return true;
+}
+
 static void print_help()
 {
 	printf("rdopng " RDO_PNG_VERSION "\n\n");
@@ -3167,13 +4147,18 @@ static void print_help()
 	printf("-output X: Set output filename to X\n");
 	printf("-debug: Debug output and images\n");
 	printf("-no_cache: Compute the Oklab lookup table at startup instead of caching the table to disk in the executable's directory\n");
-	
+	printf("-unpack: Unpack .LZ4I file and save as a .PNG file\n");
+	printf("-lz4i: Encode a .LZ4I file instead of a .PNG file\n");
+
 	printf("\nQOI specific options:\n");
 	printf("-qoi: Encode a .QOI file instead of a .PNG file\n");
 	printf("-unpack_qoi_to_png: Unpack coded .QOI file and save as a .PNG file\n");
-	printf("-uber: Best QOI compression, but slowest\n");
-	printf("-better: Better QOI compression, but slower\n");
 
+	printf("\nQOI/LZ4I specific options:\n");
+	printf("-uber: Best LZ4I/QOI compression, but slowest\n");
+	printf("-better: Better LZ4I/QOI compression\n");
+	printf("-fastest: Fastest LZ4I/QOI compression (default)\n");
+		
 	printf("\nColor distance and parsing options:\n");
 	printf("-wr X, -wg X, -wb X, -wa X: Sets individual R,G,B, or A color distance weights to X, valid X range is [0,256], default is 1 (only used in -linear mode)\n");
 	printf("-wlab L a b Alpha: Set Lab and alpha relative color distance weights, must specify 4 floats, defaults are 2 1.5 1 2\n");
@@ -3198,6 +4183,7 @@ static void print_help()
 	printf("-ultra_smooth_max_mse_scale: Set ultra-smooth region max MSE scale multiplier, default is 1500 (PNG) or 2500 (QOI)\n");
 }
 
+#if 0
 int qoi_test(const image& orig_img)
 {
 	uint8_vec qoi_data;
@@ -3243,6 +4229,7 @@ int qoi_test(const image& orig_img)
 			
 	return EXIT_SUCCESS;
 }
+#endif
 
 static void normalize_image(image& img, const rdo_png_params &params)
 {
@@ -3270,12 +4257,19 @@ static void normalize_image(image& img, const rdo_png_params &params)
 	}
 }
 
+enum comp_mode
+{
+	cModePNG,
+	cModeQOI,
+	cModeLZ4I
+};
+
 int main(int arg_c, const char** arg_v)
 {
 #ifdef _DEBUG
 	printf("DEBUG\n");
 #endif
-						
+							
 	int status = EXIT_FAILURE;
 
 #if BASISU_CATCH_EXCEPTIONS
@@ -3289,9 +4283,10 @@ int main(int arg_c, const char** arg_v)
 
 		bool quiet_mode = false;
 		bool caching_enabled = true;
-		bool qoi_mode = false;
+		comp_mode mode = cModePNG;
 		bool normalize_first = false;
 		bool unpack_qoi_to_png = false;
+		bool unpack_flag = false;
 
 		float max_smooth_std_dev = -1.0f, smooth_max_mse_scale = -1.0f, max_ultra_smooth_std_dev = -1.0f, ultra_smooth_max_mse_scale = -1.0f;
 
@@ -3333,7 +4328,15 @@ int main(int arg_c, const char** arg_v)
 			}
 			else if (strcasecmp(pArg, "-qoi") == 0)
 			{
-				qoi_mode = true;
+				mode = cModeQOI;
+			}
+			else if (strcasecmp(pArg, "-lz4i") == 0)
+			{
+				mode = cModeLZ4I;
+			}
+			else if (strcasecmp(pArg, "-unpack") == 0)
+			{
+				unpack_flag = true;
 			}
 			else if (strcasecmp(pArg, "-unpack_qoi_to_png") == 0)
 			{
@@ -3590,121 +4593,164 @@ int main(int arg_c, const char** arg_v)
 			if (!output_filename.size())
 				output_filename = "out";
 			
-			if (qoi_mode)
+			if (unpack_flag)
+				output_filename += ".png";
+			else if (mode == cModeLZ4I)
+				output_filename += "_rdo.lz4i";
+			else if (mode == cModeQOI)
 				output_filename += "_rdo.qoi";
 			else
 				output_filename += "_rdo.png";
 		}
 
-		uint64_t input_filesize = 0;
-		FILE* pFile = fopen(input_filename.c_str(), "rb");
-		if (!pFile)
+		if (unpack_flag)
 		{
-			fprintf(stderr, "Failed loading file %s\n", input_filename.c_str());
-			return EXIT_FAILURE;
-		}
-		fseek(pFile, 0, SEEK_END);
-		input_filesize = ftell(pFile);
-		fclose(pFile);
-				
-		if (!load_image(input_filename, rp.m_orig_img))
-		{
-			fprintf(stderr, "Failed loading file %s\n", input_filename.c_str());
-			return EXIT_FAILURE;
-		}
+			uint8_vec file_data;
+			if (!read_file_to_vec(input_filename.c_str(), file_data))
+			{
+				fprintf(stderr, "Failed reading file %s\n", input_filename.c_str());
+				return EXIT_FAILURE;
+			}
 
-		if (!quiet_mode)
-		{
-			printf("Loaded file \"%s\", %ux%u, has alpha: %u, size: %llu, bpp: %3.3f\n",
-				input_filename.c_str(), rp.m_orig_img.get_width(), rp.m_orig_img.get_height(), rp.m_orig_img.has_alpha(),
-				(unsigned long long)input_filesize, (input_filesize * 8.0f) / rp.m_orig_img.get_total_pixels());
-		}
+			if (!file_data.size())
+			{
+				fprintf(stderr, "File %s is empty\n", input_filename.c_str());
+				return EXIT_FAILURE;
+			}
 
-		if (rp.m_debug_images)
-		{
-			save_png("dbg_loaded.png", rp.m_orig_img);
-		}
+			image img;
+			if (!decode_lz4i(&file_data[0], file_data.size(), img))
+			{
+				fprintf(stderr, "Failed unpacking LZ4I file %s\n", input_filename.c_str());
+				return EXIT_FAILURE;
+			}
 
-		if (normalize_first)
-		{
-			normalize_image(rp.m_orig_img, rp);
-		}
-				
-		if (qoi_mode)
-		{
-			// QOI-specific settings - more artifact suppression on smooth/ultra-smooth regions vs. PNG.
-			rp.m_smooth_max_mse_scale = QOI_DEF_SMOOTH_MAX_MSE_SCALE;
-			rp.m_ultra_smooth_max_mse_scale = QOI_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE;
-		}
+			if (!save_png(output_filename.c_str(), img))
+			{
+				fprintf(stderr, "Failed writing to file %s\n", output_filename.c_str());
+				return EXIT_FAILURE;
+			}
+			
+			printf("Wrote file %s, %ux%u, has_alpha: %u\n", output_filename.c_str(), img.get_width(), img.get_height(), img.has_alpha());
 
-		if (max_smooth_std_dev != -1.0f)
-			rp.m_max_smooth_std_dev = max_smooth_std_dev;
-
-		if (smooth_max_mse_scale != -1.0f)
-			rp.m_smooth_max_mse_scale = smooth_max_mse_scale;
-
-		if (max_ultra_smooth_std_dev != -1.0f)
-			rp.m_ultra_smooth_max_mse_scale = max_ultra_smooth_std_dev;
-
-		if (ultra_smooth_max_mse_scale != -1.0f)
-			rp.m_ultra_smooth_max_mse_scale = ultra_smooth_max_mse_scale;
-
-		if (rp.m_print_debug_output)
-		{
-			printf("\nParameters:\n");
-			rp.print();
-			printf("\n");
-		}
-								
-		interval_timer tm;
-		tm.start();
-
-		bool status = false;
-
-		if (qoi_mode)
-		{
-			status = rdo_qoi(rp);
+			status = EXIT_SUCCESS;
 		}
 		else
 		{
-			status = rdo_png(rp);
-		}
-
-		if (status)
-		{ 
-			if (!quiet_mode)
-				printf("Encoded in %3.3f secs\n", tm.get_elapsed_secs());
-
-			if (!write_vec_to_file(output_filename.c_str(), rp.m_output_file_data))
+			uint64_t input_filesize = 0;
+			FILE* pFile = fopen(input_filename.c_str(), "rb");
+			if (!pFile)
 			{
-				fprintf(stderr, "Failed writing to file \"%s\"\n", output_filename.c_str());
+				fprintf(stderr, "Failed loading file %s\n", input_filename.c_str());
+				return EXIT_FAILURE;
+			}
+			fseek(pFile, 0, SEEK_END);
+			input_filesize = ftell(pFile);
+			fclose(pFile);
+
+			if (!load_image(input_filename, rp.m_orig_img))
+			{
+				fprintf(stderr, "Failed loading file %s\n", input_filename.c_str());
 				return EXIT_FAILURE;
 			}
 
 			if (!quiet_mode)
 			{
-				printf("Wrote output file \"%s\"\n", output_filename.c_str());
+				printf("Loaded file \"%s\", %ux%u, has alpha: %u, size: %llu, bpp: %3.3f\n",
+					input_filename.c_str(), rp.m_orig_img.get_width(), rp.m_orig_img.get_height(), rp.m_orig_img.has_alpha(),
+					(unsigned long long)input_filesize, (input_filesize * 8.0f) / rp.m_orig_img.get_total_pixels());
 			}
 
-			if (unpack_qoi_to_png)
+			if (rp.m_debug_images)
 			{
-				std::string png_filename(output_filename);
-				string_remove_extension(png_filename);
-				png_filename += ".png";
-				
-				if (!save_png(png_filename.c_str(), rp.m_output_image))
+				save_png("dbg_loaded.png", rp.m_orig_img);
+			}
+
+			if (normalize_first)
+			{
+				normalize_image(rp.m_orig_img, rp);
+			}
+
+			if (mode == cModeLZ4I)
+			{
+				// LZ4-specific settings - more artifact suppression on smooth/ultra-smooth regions vs. PNG.
+				rp.m_smooth_max_mse_scale = LZ4I_DEF_SMOOTH_MAX_MSE_SCALE;
+				rp.m_ultra_smooth_max_mse_scale = LZ4I_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE;
+			}
+			else if (mode == cModeQOI)
+			{
+				// QOI-specific settings - more artifact suppression on smooth/ultra-smooth regions vs. PNG.
+				rp.m_smooth_max_mse_scale = QOI_DEF_SMOOTH_MAX_MSE_SCALE;
+				rp.m_ultra_smooth_max_mse_scale = QOI_DEF_ULTRA_SMOOTH_MAX_MSE_SCALE;
+			}
+
+			if (max_smooth_std_dev != -1.0f)
+				rp.m_max_smooth_std_dev = max_smooth_std_dev;
+
+			if (smooth_max_mse_scale != -1.0f)
+				rp.m_smooth_max_mse_scale = smooth_max_mse_scale;
+
+			if (max_ultra_smooth_std_dev != -1.0f)
+				rp.m_ultra_smooth_max_mse_scale = max_ultra_smooth_std_dev;
+
+			if (ultra_smooth_max_mse_scale != -1.0f)
+				rp.m_ultra_smooth_max_mse_scale = ultra_smooth_max_mse_scale;
+
+			if (rp.m_print_debug_output)
+			{
+				printf("\nParameters:\n");
+				rp.print();
+				printf("\n");
+			}
+
+			interval_timer tm;
+			tm.start();
+
+			bool status = false;
+
+			if (mode == cModeQOI)
+				status = rdo_qoi(rp);
+			else if (mode == cModeLZ4I)
+				status = rdo_lz4i(rp);
+			else
+				status = rdo_png(rp);
+
+			if (status)
+			{
+				if (!quiet_mode)
+					printf("Encoded in %3.3f secs\n", tm.get_elapsed_secs());
+
+				if (!write_vec_to_file(output_filename.c_str(), rp.m_output_file_data))
 				{
-					fprintf(stderr, "Failed writing to file \"%s\"\n", png_filename.c_str());
+					fprintf(stderr, "Failed writing to file \"%s\"\n", output_filename.c_str());
 					return EXIT_FAILURE;
 				}
 
 				if (!quiet_mode)
 				{
-					printf("Wrote output file \"%s\"\n", png_filename.c_str());
+					printf("Wrote output file \"%s\"\n", output_filename.c_str());
 				}
+
+				if (unpack_qoi_to_png)
+				{
+					std::string png_filename(output_filename);
+					string_remove_extension(png_filename);
+					png_filename += ".png";
+
+					if (!save_png(png_filename.c_str(), rp.m_output_image))
+					{
+						fprintf(stderr, "Failed writing to file \"%s\"\n", png_filename.c_str());
+						return EXIT_FAILURE;
+					}
+
+					if (!quiet_mode)
+					{
+						printf("Wrote output file \"%s\"\n", png_filename.c_str());
+					}
+				}
+
+				status = EXIT_SUCCESS;
 			}
-	
-			status = EXIT_SUCCESS;
 		}
 	}
 	catch (const std::exception &exc)

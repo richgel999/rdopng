@@ -75,6 +75,8 @@ set(BASISU_SRC_LIST ${COMMON_SRC_LIST}
     encoder/apg_bmp.c
     encoder/jpgd.cpp
 	encoder/packagemerge.c
+    lz4.c
+    lz4hc.c
     )
 
 if (APPLE)
