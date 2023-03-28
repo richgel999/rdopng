@@ -1,5 +1,5 @@
 # rdopng
-Rate-Distortion Optimized Lossy PNG and QOI Encoding Tool
+Rate-Distortion Optimized Lossy PNG, QOI, and LZ4 image (LZ4I) Encoding Tool
 
 rdopng is a command line tool which uses LZ match optimization, Lagrangian multiplier [rate distortion optimization (RDO)](https://en.wikipedia.org/wiki/Rate%E2%80%93distortion_optimization), a simple perceptual error tolerance model, and [Oklab](https://bottosson.github.io/posts/oklab/)-based colorspace error metrics to encode 24/32bpp PNG files which are 30-80% smaller relative to lodepng/libpng. The tool defaults to reasonably fast near-lossless settings which writes PNG's around 30-40% smaller than lossless PNG encoders.
 
@@ -84,6 +84,33 @@ The higher the level within a match length category, the slower the encoder. Hig
 -lambda is the quality slider. Useful lambda values are roughly 1-20000, but values beyond approximately 500-1000 (depending on the image) will require fiddling with the level to compensate for artifacts. Higher levels are extremely slow because the current tool is single threaded.
 
 Most options work with both QOI and PNG. The -level option is only for PNG, and the -uber/-better options are only for QOI.
+
+### RDO LZ4 examples
+
+```
+rdopng -lz4i -lambda 5000 -debug -better file.png
+```
+
+Unpacking .LZ4I images to PNG:
+
+```
+rdopng -unpack file.lz4i
+```
+
+LZ4I image files contain a simple header followed by the RGB(A) pixels compressed using LZ4. Here's the header (it's like QOI's but with a different sig):
+
+```
+#pragma pack(push, 1)
+struct lz4i_header
+{
+	char sig[4]; // signature bytes "lz4i"
+	uint32_t width; // image width in pixels (BE)
+	uint32_t height; // image height in pixels (BE)
+	uint8_t channels; // 3 = RGB, 4 = RGBA
+	uint8_t colorspace; // 0 = sRGB with linear alpha 1 = all channels linear
+};
+#pragma pack(pop)
+```
 
 ### Known Problems
 rdopng has only been tested on little endian platforms, under Windows using MSVC and Ubuntu Linux using clang/gcc. There are a few known endian issues in there, which I'll eventually fix. It has not been compiled or tested on OSX.
