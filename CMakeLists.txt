@@ -1,22 +1,31 @@
 project(rdopng)
 
 cmake_minimum_required(VERSION 3.0)
-option(BUILD_X64 "build 64-bit" TRUE)
+option(BUILD_X32 "build 32-bit" FALSE)
 option(STATIC "static linking" FALSE)
 
-message("Initial BUILD_X64=${BUILD_X64}")
+message("Initial BUILD_X32=${BUILD_X32}")
 message("Initial CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
 if( NOT CMAKE_BUILD_TYPE )
-  set( CMAKE_BUILD_TYPE Release )
+    set( CMAKE_BUILD_TYPE Release )
 endif()
 
 message( ${PROJECT_NAME} " build type: " ${CMAKE_BUILD_TYPE} )
 
-if (BUILD_X64)
-    message("Building 64-bit")
-else()
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(BUILD_X32 TRUE)
+elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if (NOT BUILD_X32)
+        set(BUILD_X64 TRUE)
+    endif()
+endif()
+
+if (BUILD_X32)
     message("Building 32-bit")
+else()
+    message("Building 64-bit")
 endif()
 
 if (NOT MSVC)
@@ -25,15 +34,15 @@ if (NOT MSVC)
 
    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
-   
+
    #set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer -O1 -fno-optimize-sibling-calls")
    #set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer -O1 -fno-optimize-sibling-calls")
 
    set(CMAKE_CXX_FLAGS -std=c++11)
    set(GCC_COMPILE_FLAGS "-fvisibility=hidden -fPIC -fno-strict-aliasing -D_LARGEFILE64_SOURCE=1 -D_FILE_OFFSET_BITS=64 -Wall -Wextra -Wno-unused-local-typedefs -Wno-unused-value -Wno-unused-parameter -Wno-unused-variable")
    #set(GCC_COMPILE_FLAGS "-fsanitize=undefined -fsanitize=address -fvisibility=hidden -fPIC -fno-strict-aliasing -D_LARGEFILE64_SOURCE=1 -D_FILE_OFFSET_BITS=64 -Wall -Wextra -Wno-unused-local-typedefs -Wno-unused-value -Wno-unused-parameter -Wno-unused-variable")
-   
-   if (NOT BUILD_X64)
+
+   if (BUILD_X32)
       set(GCC_COMPILE_FLAGS "${GCC_COMPILE_FLAGS} -m32")
    endif()
 
@@ -45,12 +54,12 @@ if (NOT MSVC)
    elseif (STATIC)
       set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS}")
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}")
-	  
+
       set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${GCC_LINK_FLAGS} -static-libgcc -static-libstdc++ -static")
    else()
       set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS}")
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}")
-	  
+
       set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${GCC_LINK_FLAGS} -Wl,-rpath .")
    endif()
 
@@ -66,7 +75,7 @@ else()
    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}")
 endif()
 
-set(BASISU_SRC_LIST ${COMMON_SRC_LIST} 
+set(BASISU_SRC_LIST ${COMMON_SRC_LIST}
     rdopng.cpp
     encoder/basisu_enc.cpp
     encoder/basisu_resampler.cpp
@@ -74,7 +83,7 @@ set(BASISU_SRC_LIST ${COMMON_SRC_LIST}
     encoder/lodepng.cpp
     encoder/apg_bmp.c
     encoder/jpgd.cpp
-	encoder/packagemerge.c
+    encoder/packagemerge.c
     lz4.c
     lz4hc.c
     )
@@ -95,7 +104,7 @@ endif()
 
 if (NOT EMSCRIPTEN)
     install(TARGETS rdopng DESTINATION bin)
-    
+
     if (UNIX)
         if (CMAKE_BUILD_TYPE STREQUAL Release)
             if (APPLE)
