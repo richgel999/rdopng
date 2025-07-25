@@ -115,6 +115,8 @@ struct lz4i_header
 ### Known Problems
 rdopng has only been tested on little endian platforms, under Windows using MSVC and Ubuntu Linux using clang/gcc. There are a few known endian issues in there, which I'll eventually fix. It has not been compiled or tested on OSX.
 
+These encoders are trivially parallelized by dividing up the image to compress into strips and processing them separately.
+
 ### Special Thanks
 Thanks to [Paul Hughes](https://twitter.com/PaulieHughes) for encouraging me to continue working on this on Twitter. Also, thanks to [Jyrki Alakuijala](https://twitter.com/jyzg) for suggesting to drop YCbCr for an alternative such as Oklab.
 
