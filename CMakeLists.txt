@@ -1,6 +1,7 @@
+cmake_minimum_required(VERSION 3.10)
+
 project(rdopng)
 
-cmake_minimum_required(VERSION 3.0)
 option(BUILD_X64 "build 64-bit" TRUE)
 option(STATIC "static linking" FALSE)
 
